@@ -5,7 +5,13 @@
       "Bash(docker exec *)",
       "Bash(npx tsc *)",
       "Bash(cd /mnt/c/works/vibe_bot/frontend && npx tsc --noEmit 2>&1 | head -60)",
-      "Read(//mnt/c/works/vibe_bot/**)"
+      "Read(//mnt/c/works/vibe_bot/**)",
+      "PowerShell(cd c:\\\\works\\\\vibe_bot\\\\frontend; npx tsc --noEmit 2>&1 | Select-String \"Strategies.tsx|indicators.ts|PriceChart.tsx\" | Where-Object { $_ -notmatch \"Cannot find module|JSX element implicitly|jsx-runtime|IntrinsicElements\" } | Select-Object -First 30)",
+      "PowerShell(cd c:\\\\works\\\\vibe_bot\\\\frontend; npx tsc --noEmit 2>&1 | Select-String \"indicators.ts|PriceChart.tsx\" | Where-Object { $_ -notmatch \"Cannot find module|jsx-runtime|IntrinsicElements|2307|7026|2875\" } | Select-Object -First 20)",
+      "PowerShell(cd c:\\\\works\\\\vibe_bot\\\\frontend; npx tsc --noEmit 2>&1 | Where-Object { $_ -match \"indicators.ts|PriceChart.tsx\" -and $_ -notmatch \"Cannot find module|jsx-runtime\" } | Select-Object -First 20)",
+      "PowerShell(cd c:\\\\works\\\\vibe_bot\\\\frontend; npx tsc --noEmit 2>&1 | Where-Object { $_ -match \"Strategies.tsx\" -and $_ -notmatch \"Cannot find module|jsx-runtime|IntrinsicElements|7026|2875|7006|2307\" } | Select-Object -First 20)",
+      "PowerShell(cd c:\\\\works\\\\vibe_bot\\\\frontend; npx tsc --noEmit 2>&1 | Where-Object { $_ -match \"Strategies.tsx\" -and $_ -notmatch \"Cannot find module|jsx-runtime|IntrinsicElements|7026|2875|7006|2307|18046\" } | Select-Object -First 20)",
+      "PowerShell(cd c:\\\\works\\\\vibe_bot\\\\frontend; npx tsc --noEmit 2>&1 | Where-Object { $_ -match \"Strategies.tsx\" -and $_ -notmatch \"Cannot find module|jsx-runtime|IntrinsicElements|7026|2875|7006|2307|18046\" } | Select-Object -First 10)"
     ]
   }
 }
