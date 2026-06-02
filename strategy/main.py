@@ -110,8 +110,11 @@ def cache_portfolio_snapshot() -> None:
                 {
                     "symbol": p.symbol,
                     "qty": str(p.qty),
+                    "avg_entry_price": str(p.avg_entry_price),
+                    "current_price": str(p.current_price),
                     "market_value": str(p.market_value),
                     "unrealized_pl": str(p.unrealized_pl),
+                    "unrealized_plpc": str(p.unrealized_plpc),
                 }
                 for p in positions
             ],

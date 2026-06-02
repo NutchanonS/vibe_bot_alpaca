@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, ResponsiveContainer } from "recharts";
 import api from "../api/client";
 import { fmt, pnlColor } from "../lib/format";
+import PortfolioSummary from "../components/PortfolioSummary";
 
 const COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#06b6d4", "#8b5cf6"];
 
@@ -21,6 +22,7 @@ export default function Portfolio() {
   return (
     <div className="p-6 space-y-4">
       <h2 className="text-lg font-bold">Portfolio</h2>
+      <PortfolioSummary portfolio={portfolio} />
 
       <div className="grid grid-cols-2 gap-4">
         {/* Allocation donut */}

@@ -38,11 +38,11 @@ app.use("/api/orders", authMiddleware, ordersRoutes);
 app.use("/api/strategies", authMiddleware, strategiesRoutes);
 app.use("/api/watchlist", authMiddleware, watchlistRoutes);
 
-// Chart endpoint
-app.get("/api/chart/:symbol", authMiddleware, async (req, res) => {
-  // TODO: proxy bars from Alpaca data API
-  res.json({ symbol: req.params.symbol, bars: [] });
-});
+// Chart, quote, assets, indicators
+app.use("/api/chart", authMiddleware, require("./routes/chart"));
+app.use("/api/quote", authMiddleware, require("./routes/quote"));
+app.use("/api/assets", authMiddleware, require("./routes/assets"));
+app.use("/api/indicators", authMiddleware, require("./routes/indicators"));
 
 // Start WebSocket relay
 startRelay(io);

@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(docker-compose logs *)"
+      "Bash(docker-compose logs *)",
+      "Bash(docker exec *)",
+      "Bash(npx tsc *)",
+      "Bash(cd /mnt/c/works/vibe_bot/frontend && npx tsc --noEmit 2>&1 | head -60)",
+      "Read(//mnt/c/works/vibe_bot/**)"
     ]
   }
 }
