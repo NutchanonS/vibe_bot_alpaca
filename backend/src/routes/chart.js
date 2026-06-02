@@ -18,11 +18,12 @@ const headers = () => ({
 
 // period → { bar size, lookback days, intraday }
 const TIMEFRAME_MAP = {
-  "1D": { timeframe: "5Min",  days: 1,   intraday: true  },
-  "1W": { timeframe: "1Hour", days: 7,   intraday: true  },
-  "1M": { timeframe: "1Day",  days: 30,  intraday: false },
-  "3M": { timeframe: "1Day",  days: 90,  intraday: false },
-  "1Y": { timeframe: "1Day",  days: 365, intraday: false },
+  "1D":  { timeframe: "5Min",  days: 1,    intraday: true  },
+  "1W":  { timeframe: "1Hour", days: 7,    intraday: true  },
+  "1M":  { timeframe: "1Day",  days: 30,   intraday: false },
+  "3M":  { timeframe: "1Day",  days: 90,   intraday: false },
+  "1Y":  { timeframe: "1Day",  days: 365,  intraday: false },
+  "All": { timeframe: "1Week", days: 1825, intraday: false },
 };
 
 function daysAgo(n) {

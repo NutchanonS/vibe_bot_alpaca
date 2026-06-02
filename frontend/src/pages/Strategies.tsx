@@ -897,7 +897,7 @@ function btBarTime(trade: Trade, allBars: Bar[], intraday: boolean): number | st
 function BacktestTab() {
   const [symbol, setSymbol] = useState("SPY");
   const [stratFilter, setStratFilter] = useState("all");
-  const [timeframe, setTimeframe] = useState("3M");
+  const [timeframe, setTimeframe] = useState<"1M"|"3M"|"1Y"|"All">("3M");
 
   const mainRef    = useRef<HTMLDivElement>(null);
   const oscRef     = useRef<HTMLDivElement>(null);
@@ -1178,7 +1178,7 @@ function BacktestTab() {
           </select>
         </div>
         <div className="flex gap-1">
-          {(["1M","3M","1Y"] as const).map(tf => (
+          {(["1M","3M","1Y","All"] as const).map(tf => (
             <button key={tf} onClick={() => setTimeframe(tf)}
               className={clsx("px-2.5 py-1 rounded text-xs font-medium transition-colors",
                 timeframe === tf ? "bg-brand text-white" : "text-gray-400 hover:bg-border hover:text-white")}>
