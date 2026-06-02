@@ -1,0 +1,1 @@
+curl -X GET https://paper-api.alpaca.markets/v2/account -H "APCA-API-KEY-ID: PKLIF6TNUHOUCMWZOPP7ZAQ6YY" -H "APCA-API-SECRET-KEY: BVHtYd11VESNA5i94LYwzx1TmtJPMEBDHzSJNVtnn4cu"
