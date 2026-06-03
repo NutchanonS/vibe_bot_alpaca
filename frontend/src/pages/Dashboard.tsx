@@ -52,8 +52,24 @@ interface AgentStatus {
   error?: string;
   symbols?: string[];
   qa?: AgentQASummary;
-  news?: { snapshots?: { symbol: string; articles: number }[] };
-  news_sentiments?: Record<string, { overall_sentiment?: number; confidence?: number; summary?: string; analysis_status?: string }>;
+  news?: {
+    snapshots?: {
+      symbol: string;
+      articles: number;
+      items?: { id?: number; headline?: string; summary?: string; source?: string; url?: string; created_at?: string }[];
+    }[];
+  };
+  news_sentiments?: Record<string, {
+    overall_sentiment?: number;
+    confidence?: number;
+    summary?: string;
+    analysis_status?: string;
+    key_themes?: string[];
+    risk_events?: string[];
+    bullish_reasons?: string[];
+    bearish_reasons?: string[];
+    articles_analyzed?: number;
+  }>;
   signal_contexts?: Record<string, { supporting_signals?: string[]; conflicting_signals?: string[] }>;
 }
 
@@ -301,6 +317,9 @@ function NewsSentimentBadge({ score }: { score: number }) {
 
 function AgentMonitor({ activeSymbol }: { activeSymbol: string }) {
   const qc = useQueryClient();
+  const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null);
+  const [sentimentFilter, setSentimentFilter] = useState("");
+  const [showOnlyFailed, setShowOnlyFailed] = useState(false);
   const { data, isLoading, isError } = useQuery<AgentStatus>({
     queryKey: ["agent-status"],
     queryFn: () => api.get("/agent/status").then(r => r.data),
@@ -328,6 +347,14 @@ function AgentMonitor({ activeSymbol }: { activeSymbol: string }) {
   const qa = data.qa ?? {};
   const sentiments = data.news_sentiments ?? {};
   const contexts = data.signal_contexts ?? {};
+  const newsBySymbol = Object.fromEntries((data.news?.snapshots ?? []).map(s => [s.symbol, s]));
+  const normalizedFilter = sentimentFilter.trim().toLowerCase();
+  const sentimentEntries = Object.entries(sentiments).filter(([sym, s]) => {
+    if (showOnlyFailed && s.analysis_status !== "openai_failed") return false;
+    if (!normalizedFilter) return true;
+    const haystack = `${sym} ${s.summary ?? ""}`.toLowerCase();
+    return haystack.includes(normalizedFilter);
+  });
 
   return (
     <div className="p-3 space-y-3 text-xs">
@@ -373,21 +400,109 @@ function AgentMonitor({ activeSymbol }: { activeSymbol: string }) {
         </div>
       </div>
 
-      <div className="space-y-1">
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <input
+            value={sentimentFilter}
+            onChange={(e) => setSentimentFilter(e.target.value)}
+            placeholder="Filter by symbol or text"
+            className="flex-1 bg-surface border border-border rounded px-2 py-1 text-[11px] text-gray-200 focus:outline-none focus:border-brand"
+          />
+          <button
+            type="button"
+            onClick={() => setShowOnlyFailed(v => !v)}
+            className={clsx(
+              "text-[10px] px-2 py-1 rounded border transition-colors",
+              showOnlyFailed ? "border-loss text-loss bg-loss/10" : "border-border text-gray-300 hover:text-white"
+            )}
+          >
+            Only OpenAI failed
+          </button>
+        </div>
+
         {Object.keys(sentiments).length === 0 && <p className="text-gray-500">No sentiment output yet.</p>}
-        {Object.entries(sentiments).map(([sym, s]) => (
-          <div key={sym} className="flex items-center justify-between gap-2 border border-border/60 rounded px-2 py-1.5 bg-surface/40">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="font-mono text-brand">{sym}</span>
-              {typeof s.overall_sentiment === "number" && <NewsSentimentBadge score={s.overall_sentiment} />}
-              <span className="text-gray-500">conf {typeof s.confidence === "number" ? `${Math.round(s.confidence * 100)}%` : "-"}</span>
-              {s.analysis_status === "openai_failed" && (
-                <span className="text-[9px] px-1 py-0.5 rounded bg-loss/20 text-loss font-semibold">OpenAI failed</span>
+        {Object.keys(sentiments).length > 0 && sentimentEntries.length === 0 && (
+          <p className="text-gray-500">No sentiment entries match current filter.</p>
+        )}
+        {sentimentEntries.map(([sym, s]) => {
+          const expanded = expandedSymbol === sym;
+          const relatedNews = newsBySymbol[sym];
+          return (
+            <div key={sym} className="border border-border/70 rounded-md bg-surface/40 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setExpandedSymbol(prev => (prev === sym ? null : sym))}
+                className="w-full px-3 py-2 text-left hover:bg-surface/70 transition-colors"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-mono text-brand">{sym}</span>
+                    {typeof s.overall_sentiment === "number" && <NewsSentimentBadge score={s.overall_sentiment} />}
+                    <span className="text-gray-500">conf {typeof s.confidence === "number" ? `${Math.round(s.confidence * 100)}%` : "-"}</span>
+                    {s.analysis_status === "openai_failed" && (
+                      <span className="text-[9px] px-1 py-0.5 rounded bg-loss/20 text-loss font-semibold">OpenAI failed</span>
+                    )}
+                    {s.analysis_status === "no_articles" && (
+                      <span className="text-[9px] px-1 py-0.5 rounded bg-border text-gray-300 font-semibold">No articles</span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-gray-500">{expanded ? "Hide" : "View"} details</span>
+                </div>
+                <p className="text-gray-400 mt-1 line-clamp-2">{s.summary ?? "No summary."}</p>
+              </button>
+
+              {expanded && (
+                <div className="border-t border-border/70 px-3 py-2 space-y-2 bg-[#111722]">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wide text-gray-500">Key Themes</p>
+                      <p className="text-gray-300">{s.key_themes?.length ? s.key_themes.join(", ") : "None"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wide text-gray-500">Risk Events</p>
+                      <p className="text-gray-300">{s.risk_events?.length ? s.risk_events.join(", ") : "None"}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wide text-gray-500">Bullish Reasons</p>
+                      <p className="text-gain/90">{s.bullish_reasons?.length ? s.bullish_reasons.join("; ") : "None"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wide text-gray-500">Bearish Reasons</p>
+                      <p className="text-loss/90">{s.bearish_reasons?.length ? s.bearish_reasons.join("; ") : "None"}</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+                      News analyzed ({s.articles_analyzed ?? relatedNews?.articles ?? 0})
+                    </p>
+                    <div className="space-y-1.5">
+                      {(relatedNews?.items ?? []).length === 0 && (
+                        <p className="text-gray-500">No article detail available.</p>
+                      )}
+                      {(relatedNews?.items ?? []).map((item, idx) => (
+                        <a
+                          key={`${sym}-news-${item.id ?? idx}`}
+                          href={item.url || "#"}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block border border-border/60 rounded px-2 py-1.5 hover:border-brand/70 hover:bg-surface/60 transition-colors"
+                        >
+                          <p className="text-gray-200 text-[11px] line-clamp-2">{item.headline || "Untitled"}</p>
+                          <p className="text-[10px] text-gray-500 mt-0.5">{item.source || "Unknown"}{item.created_at ? ` • ${new Date(item.created_at).toLocaleString()}` : ""}</p>
+                          {item.summary && <p className="text-[10px] text-gray-400 mt-1 line-clamp-2">{item.summary}</p>}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
-            <div className="text-gray-500 truncate">{s.summary ?? ""}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="space-y-1">

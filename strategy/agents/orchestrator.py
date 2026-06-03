@@ -106,6 +106,17 @@ class AgentOrchestrator:
                     {
                         "symbol": getattr(s, "symbol", None),
                         "articles": len(getattr(s, "articles", [])),
+                        "items": [
+                            {
+                                "id": getattr(a, "id", None),
+                                "headline": getattr(a, "headline", ""),
+                                "summary": getattr(a, "summary", ""),
+                                "source": getattr(a, "source", ""),
+                                "url": getattr(a, "url", ""),
+                                "created_at": getattr(a, "created_at", None),
+                            }
+                            for a in getattr(s, "articles", [])[:5]
+                        ],
                     }
                     for s in news_snapshots
                 ],
