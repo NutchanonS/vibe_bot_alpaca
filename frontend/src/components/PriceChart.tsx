@@ -33,7 +33,7 @@ interface Props {
   chartType?: "candlestick" | "line";
   indicatorConfigs?: IndicatorConfig[];
   intraday?: boolean;
-  visiblePeriod?: "1m" | "3m" | "1y";
+  visiblePeriod?: "1d" | "2w" | "1m" | "3m" | "1y";
   onVisibleBarsChange?: (visibleBars: number) => void;
 }
 
@@ -66,7 +66,7 @@ function parseTickTime(time: number | { year: number; month: number; day: number
 function formatTickLabel(
   time: number | { year: number; month: number; day: number },
   tickMarkType: TickMarkType,
-  visiblePeriod: "1m" | "3m" | "1y",
+  visiblePeriod: "1d" | "2w" | "1m" | "3m" | "1y",
   locale: string,
 ): string {
   const date = parseTickTime(time);
@@ -82,7 +82,7 @@ function formatTickLabel(
   return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(date);
 }
 
-const CHART_OPTS = (intraday: boolean, visiblePeriod: "1m" | "3m" | "1y") => ({
+const CHART_OPTS = (intraday: boolean, visiblePeriod: "1d" | "2w" | "1m" | "3m" | "1y") => ({
   layout: { background: { color: "transparent" }, textColor: "#6a6a7d" },
   grid: {
     vertLines: { color: "rgba(255,255,255,0.04)" },
@@ -210,7 +210,7 @@ export default function PriceChart({
     if (lastTime !== undefined) {
       if (intraday) {
         const to = Number(lastTime) as UTCTimestamp;
-        const days = visiblePeriod === "1m" ? 30 : visiblePeriod === "3m" ? 90 : 365;
+        const days = visiblePeriod === "1d" ? 1 : visiblePeriod === "2w" ? 14 : visiblePeriod === "1m" ? 30 : visiblePeriod === "3m" ? 90 : 365;
         chart.timeScale().setVisibleRange({
           from: (to - days * 86_400) as UTCTimestamp,
           to,
@@ -218,7 +218,9 @@ export default function PriceChart({
       } else {
         const toDate = new Date(String(lastTime) + "T00:00:00Z");
         const fromDate = new Date(toDate.getTime());
-        if (visiblePeriod === "1m") fromDate.setUTCMonth(fromDate.getUTCMonth() - 1);
+        if (visiblePeriod === "1d") fromDate.setUTCDate(fromDate.getUTCDate() - 1);
+        else if (visiblePeriod === "2w") fromDate.setUTCDate(fromDate.getUTCDate() - 14);
+        else if (visiblePeriod === "1m") fromDate.setUTCMonth(fromDate.getUTCMonth() - 1);
         else if (visiblePeriod === "3m") fromDate.setUTCMonth(fromDate.getUTCMonth() - 3);
         else fromDate.setUTCFullYear(fromDate.getUTCFullYear() - 1);
         chart.timeScale().setVisibleRange({

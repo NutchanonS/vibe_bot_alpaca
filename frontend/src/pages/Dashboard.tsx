@@ -33,8 +33,10 @@ interface SignalLog { strategy: string; symbol: string; signal: string; time: st
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
-const TIMEFRAMES = ["1m", "3m", "1y"] as const;
-const API_TIMEFRAME_BY_WINDOW: Record<(typeof TIMEFRAMES)[number], "1M" | "3M" | "1Y"> = {
+const TIMEFRAMES = ["1d", "2w", "1m", "3m", "1y"] as const;
+const API_TIMEFRAME_BY_WINDOW: Record<(typeof TIMEFRAMES)[number], "1D" | "2W" | "1M" | "3M" | "1Y"> = {
+  "1d": "1D",
+  "2w": "2W",
   "1m": "1M",
   "3m": "3M",
   "1y": "1Y",
@@ -181,7 +183,7 @@ export default function Dashboard() {
 
   const { data: chartData, isLoading: chartLoading, isError: chartError } = useQuery({
     queryKey: ["chart", activeSymbol, timeframe],
-    queryFn: () => api.get(`/chart/${activeSymbol}?timeframe=${API_TIMEFRAME_BY_WINDOW[timeframe]}`).then((r) => r.data),
+    queryFn: () => api.get(`/chart/${activeSymbol}?timeframe=${API_TIMEFRAME_BY_WINDOW[timeframe]}&extended=1`).then((r) => r.data),
     refetchInterval: 30_000,
   });
 
@@ -288,7 +290,7 @@ export default function Dashboard() {
                   <button key={tf} onClick={() => setTimeframe(tf)}
                     className={clsx("px-2.5 py-1 rounded text-xs font-medium transition-colors",
                       timeframe === tf ? "bg-brand text-white" : "text-gray-400 hover:bg-border hover:text-white")}>
-                    {tf}
+                    {tf.toUpperCase()}
                   </button>
                 ))}
               </div>

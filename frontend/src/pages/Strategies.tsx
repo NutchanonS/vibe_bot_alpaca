@@ -861,7 +861,9 @@ const BT_STRAT_COLORS: Record<string, string> = {
   vwap_breakout:      "#22d3ee",
 };
 
-const BT_API_TIMEFRAME_BY_WINDOW: Record<"1m" | "3m" | "1y", "1M" | "3M" | "1Y"> = {
+const BT_API_TIMEFRAME_BY_WINDOW: Record<"1d" | "2w" | "1m" | "3m" | "1y", "1D" | "2W" | "1M" | "3M" | "1Y"> = {
+  "1d": "1D",
+  "2w": "2W",
   "1m": "1M",
   "3m": "3M",
   "1y": "1Y",
@@ -878,12 +880,12 @@ function getBtStratColor(name: string): string {
 function BacktestTab() {
   const [symbol, setSymbol] = useState("SPY");
   const [stratFilter, setStratFilter] = useState("all");
-  const [timeframe, setTimeframe] = useState<"1m"|"3m"|"1y">("3m");
+  const [timeframe, setTimeframe] = useState<"1d"|"2w"|"1m"|"3m"|"1y">("3m");
   const [chartType, setChartType] = useState<"candlestick" | "line">("candlestick");
 
   const { data: chartData, isLoading: chartLoading, isError: chartError } = useQuery({
     queryKey: ["chart", symbol, timeframe],
-    queryFn:  () => api.get(`/chart/${symbol}?timeframe=${BT_API_TIMEFRAME_BY_WINDOW[timeframe]}`).then(r => r.data),
+    queryFn:  () => api.get(`/chart/${symbol}?timeframe=${BT_API_TIMEFRAME_BY_WINDOW[timeframe]}&extended=1`).then(r => r.data),
   });
   const bars: Bar[]         = chartData?.bars    ?? [];
   const isIntraday: boolean = chartData?.intraday ?? false;
@@ -942,11 +944,11 @@ function BacktestTab() {
           </select>
         </div>
         <div className="flex gap-1">
-          {(["1m","3m","1y"] as const).map(tf => (
+          {(["1d","2w","1m","3m","1y"] as const).map(tf => (
             <button key={tf} onClick={() => setTimeframe(tf)}
               className={clsx("px-2.5 py-1 rounded text-xs font-medium transition-colors",
                 timeframe === tf ? "bg-brand text-white" : "text-gray-400 hover:bg-border hover:text-white")}>
-              {tf}
+              {tf.toUpperCase()}
             </button>
           ))}
         </div>
@@ -961,9 +963,11 @@ function BacktestTab() {
       {/* ── Stats ── */}
       <div className="grid grid-cols-5 gap-3">
           {[
-            { label: "Window", value: timeframe, sub: lastBar ? (() => {
+            { label: "Window", value: timeframe.toUpperCase(), sub: lastBar ? (() => {
               const d = new Date(String(lastBar.time) + "T00:00:00Z");
-              if (timeframe === "1m") d.setUTCMonth(d.getUTCMonth() - 1);
+              if (timeframe === "1d") d.setUTCDate(d.getUTCDate() - 1);
+              else if (timeframe === "2w") d.setUTCDate(d.getUTCDate() - 14);
+              else if (timeframe === "1m") d.setUTCMonth(d.getUTCMonth() - 1);
               else if (timeframe === "3m") d.setUTCMonth(d.getUTCMonth() - 3);
               else d.setUTCFullYear(d.getUTCFullYear() - 1);
               return `${d.toISOString().slice(0,10)} – ${String(lastBar.time)}`;
