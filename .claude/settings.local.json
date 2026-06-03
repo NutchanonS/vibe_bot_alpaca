@@ -12,7 +12,8 @@
       "PowerShell(cd c:\\\\works\\\\vibe_bot\\\\frontend; npx tsc --noEmit 2>&1 | Where-Object { $_ -match \"Strategies.tsx\" -and $_ -notmatch \"Cannot find module|jsx-runtime|IntrinsicElements|7026|2875|7006|2307\" } | Select-Object -First 20)",
       "PowerShell(cd c:\\\\works\\\\vibe_bot\\\\frontend; npx tsc --noEmit 2>&1 | Where-Object { $_ -match \"Strategies.tsx\" -and $_ -notmatch \"Cannot find module|jsx-runtime|IntrinsicElements|7026|2875|7006|2307|18046\" } | Select-Object -First 20)",
       "PowerShell(cd c:\\\\works\\\\vibe_bot\\\\frontend; npx tsc --noEmit 2>&1 | Where-Object { $_ -match \"Strategies.tsx\" -and $_ -notmatch \"Cannot find module|jsx-runtime|IntrinsicElements|7026|2875|7006|2307|18046\" } | Select-Object -First 10)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(docker compose *)"
     ]
   }
 }

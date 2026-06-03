@@ -881,7 +881,7 @@ function BacktestTab() {
   const [timeframe, setTimeframe] = useState<"1m"|"3m"|"1y">("3m");
   const [chartType, setChartType] = useState<"candlestick" | "line">("candlestick");
 
-  const { data: chartData } = useQuery({
+  const { data: chartData, isLoading: chartLoading, isError: chartError } = useQuery({
     queryKey: ["chart", symbol, timeframe],
     queryFn:  () => api.get(`/chart/${symbol}?timeframe=${BT_API_TIMEFRAME_BY_WINDOW[timeframe]}`).then(r => r.data),
   });
@@ -983,9 +983,17 @@ function BacktestTab() {
 
       {/* ── Main price chart ── */}
       <div className="bg-panel border border-border rounded-lg overflow-hidden">
-        {bars.length === 0 ? (
+        {chartLoading ? (
           <div className="flex items-center justify-center text-gray-500 text-sm" style={{ height: 420 }}>
             Loading {symbol} chart data…
+          </div>
+        ) : chartError ? (
+          <div className="flex items-center justify-center text-loss text-sm" style={{ height: 420 }}>
+            Failed to load chart data.
+          </div>
+        ) : bars.length === 0 ? (
+          <div className="flex items-center justify-center text-gray-500 text-sm" style={{ height: 420 }}>
+            No chart bars returned for {symbol}.
           </div>
         ) : (
           <div style={{ height: 420 }}>

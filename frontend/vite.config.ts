@@ -6,8 +6,8 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      "/api": { target: "http://localhost:8000", changeOrigin: true },
-      "/ws": { target: "http://localhost:8000", ws: true, changeOrigin: true },
+      "/api": { target: "http://backend:8000", changeOrigin: true },
+      "/ws": { target: "http://backend:8000", ws: true, changeOrigin: true },
     },
   },
 });

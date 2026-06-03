@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import {
-  createChart, IChartApi, UTCTimestamp,
+  createChart, IChartApi, UTCTimestamp, BusinessDay,
   LineStyle, CrosshairMode, TickMarkType,
 } from "lightweight-charts";
 import {
@@ -37,12 +37,25 @@ interface Props {
   onVisibleBarsChange?: (visibleBars: number) => void;
 }
 
-function toTime(t: string | number) { return t as UTCTimestamp; }
+type ChartTime = UTCTimestamp | BusinessDay;
 
-function toPoints(arr: (number | null)[], times: UTCTimestamp[]) {
+function toBusinessDay(value: string | number): BusinessDay {
+  if (typeof value === "string") {
+    const [year, month, day] = value.split("-").map(Number);
+    return { year, month, day };
+  }
+  const d = new Date(value * 1000);
+  return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };
+}
+
+function toChartTime(value: string | number, intraday: boolean): ChartTime {
+  return intraday ? (Number(value) as UTCTimestamp) : toBusinessDay(value);
+}
+
+function toPoints(arr: (number | null)[], times: ChartTime[]) {
   return arr
     .map((v, i) => v !== null && isFinite(v) ? { time: times[i], value: v } : null)
-    .filter(Boolean) as { time: UTCTimestamp; value: number }[];
+    .filter(Boolean) as { time: ChartTime; value: number }[];
 }
 
 function parseTickTime(time: number | { year: number; month: number; day: number }): Date {
@@ -109,16 +122,16 @@ export default function PriceChart({
     chartRef.current = chart;
 
     const closes = bars.map(b => b.close);
-    const times  = bars.map(b => toTime(b.time));
+    const times  = bars.map(b => toChartTime(b.time, intraday));
 
     if (chartType === "candlestick") {
       chart.addCandlestickSeries({
         upColor: "#2bd576", downColor: "#fb5d6d",
         borderVisible: false, wickUpColor: "#2bd576", wickDownColor: "#fb5d6d",
-      }).setData(bars.map(b => ({ time: toTime(b.time), open: b.open, high: b.high, low: b.low, close: b.close })));
+      }).setData(bars.map(b => ({ time: toChartTime(b.time, intraday), open: b.open, high: b.high, low: b.low, close: b.close })));
     } else {
       chart.addLineSeries({ color: "#6366f1", lineWidth: 2, priceLineVisible: false })
-           .setData(bars.map(b => ({ time: toTime(b.time), value: b.close })));
+           .setData(bars.map(b => ({ time: toChartTime(b.time, intraday), value: b.close })));
     }
 
     // Helper: add overlay line series
@@ -209,8 +222,8 @@ export default function PriceChart({
         else if (visiblePeriod === "3m") fromDate.setUTCMonth(fromDate.getUTCMonth() - 3);
         else fromDate.setUTCFullYear(fromDate.getUTCFullYear() - 1);
         chart.timeScale().setVisibleRange({
-          from: fromDate.toISOString().slice(0, 10) as unknown as UTCTimestamp,
-          to: String(lastTime) as unknown as UTCTimestamp,
+          from: toBusinessDay(fromDate.toISOString().slice(0, 10)),
+          to: toBusinessDay(String(lastTime)),
         });
       }
     }

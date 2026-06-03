@@ -40,6 +40,8 @@ services:
     env_file: .env
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - backend
     networks:
       - internal
     volumes:
@@ -57,7 +59,7 @@ services:
       - pg_data:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trader}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trader} -d ${POSTGRES_DB:-tradingbot}"]
       interval: 5s
       timeout: 5s
       retries: 5

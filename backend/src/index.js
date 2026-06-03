@@ -21,9 +21,15 @@ const io = new Server(server, {
   path: "/ws/socket.io",
 });
 
+app.set("etag", false);
+
 app.use(cors());
 app.use(morgan("dev"));
 app.use(express.json());
+app.use("/api", (_req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
 
 // Health check — no auth required
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
