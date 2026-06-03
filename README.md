@@ -1,5 +1,11 @@
 # Alpaca Trading Bot
 
+![alt text](./readme_img/image.png)
+
+![alt text](./readme_img/image-5.png)
+
+![alt text](./readme_img/image-4.png)
+
 Automated trading bot platform with:
 - Python strategy engine (`strategy/`)
 - Node.js backend API + WebSocket relay (`backend/`)
@@ -12,6 +18,7 @@ Automated trading bot platform with:
 - **Backend:** Node.js 20, Express, Socket.IO, Redis, PostgreSQL (`pg`)
 - **Frontend:** React + TypeScript + Vite + TailwindCSS + lightweight-charts
 - **Infra:** Docker Compose, Nginx reverse proxy
+![alt text](./readme_img/image-2.png)
 
 ## Repository Structure
 
@@ -97,6 +104,8 @@ Built-in strategies:
 - VWAP Breakout
 
 All strategy signals are executed through `strategy/broker/order_manager.py`.
+
+![alt text](./readme_img/image-3.png)
 
 ## Security Notes
 
