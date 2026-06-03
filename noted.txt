@@ -8,3 +8,54 @@ curl -X POST http://localhost:8000/api/auth/login -H "Content-Type: application/
 # Use the token to check portfolio
 curl http://localhost:8000/api/portfolio \
   -H "Authorization: Bearer <token_from_above>"
+
+
+
+
+
+
+
+
+
+
+
+
+
+Use this prompt:
+Unify visual design between /app pages and the homepage so the app feels like one product.
+Scope:
+- Apply homepage visual language to all /app routes:
+- /app (Overview)
+- /app/trading
+- /app/strategies
+- /app/portfolio
+- /app/history
+Requirements:
+1. Keep all existing app functionality and data flow unchanged.
+2. Match homepage style system:
+- same typography hierarchy and font usage
+- same color palette/tokens (backgrounds, text, borders, accents)
+- same button/input/card styling
+- same spacing rhythm and corner radii
+- same gradient/glow treatment (subtle, not noisy)
+3. Create a shared app theme token layer (CSS variables/utilities) instead of page-by-page hardcoded colors.
+4. Refactor repeated UI into reusable components where practical (panel/card header, section title, metric tile, table shell, tab switcher).
+5. Ensure responsiveness for desktop + mobile.
+6. Preserve accessibility:
+- contrast, focus states, keyboard navigation
+- no hidden text due to gradients.
+7. Do not redesign information architecture; only make UI consistent and polished.
+Focus files:
+- frontend/src/index.css
+- frontend/src/App.tsx
+- frontend/src/pages/Dashboard.tsx
+- frontend/src/pages/Trading.tsx
+- frontend/src/pages/Strategies.tsx
+- frontend/src/pages/Portfolio.tsx
+- frontend/src/pages/History.tsx
+- shared components under frontend/src/components/**
+Deliverables:
+- Updated theme/tokens and app pages styled consistently with homepage.
+- Brief list of reusable primitives introduced.
+- npm run build passes in frontend.
+If needed, prefer preserving current layout structure and only harmonize styling.

@@ -1,12 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { createChart, IChartApi, UTCTimestamp, CrosshairMode } from "lightweight-charts";
 import api from "../api/client";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import clsx from "clsx";
 import { fmt, pnlColor } from "../lib/format";
 import { getSocket } from "../lib/socket";
 import SymbolSearch from "../components/SymbolSearch";
+import PriceChart from "../components/PriceChart";
 import {
   calcEMA, calcSMA, calcWMA, calcDEMA, calcTEMA, calcHMA, calcVWMA,
   calcVWAP, calcVWAPBands, calcBollinger, calcKeltner, calcDonchian,
@@ -202,7 +202,7 @@ function AddStrategyModal({ types, onClose }: { types: StrategyTypesMap; onClose
         <div className="flex gap-2 pt-2">
           <button onClick={onClose} className="flex-1 py-2 bg-border rounded text-sm text-gray-300 hover:bg-gray-600">Cancel</button>
           <button onClick={() => mut.mutate()} disabled={!name.trim() || mut.isPending}
-            className="flex-1 py-2 bg-brand hover:bg-brand-dark disabled:opacity-50 rounded text-sm font-semibold transition-colors">
+            className="flex-1 py-2 btn-brand-grad disabled:opacity-50 rounded text-sm font-semibold transition-colors">
             {mut.isPending ? "Adding…" : "Add Strategy"}
           </button>
         </div>
@@ -314,7 +314,7 @@ function AddIndicatorModal({ types, onClose }: { types: IndicatorTypesMap; onClo
         <div className="flex gap-2 pt-2">
           <button onClick={onClose} className="flex-1 py-2 bg-border rounded text-sm text-gray-300 hover:bg-gray-600">Cancel</button>
           <button onClick={() => mut.mutate()} disabled={mut.isPending}
-            className="flex-1 py-2 bg-brand hover:bg-brand-dark disabled:opacity-50 rounded text-sm font-semibold transition-colors">
+            className="flex-1 py-2 btn-brand-grad disabled:opacity-50 rounded text-sm font-semibold transition-colors">
             {mut.isPending ? "Adding…" : "Add Indicator"}
           </button>
         </div>
@@ -401,7 +401,7 @@ function StrategyTradingTab() {
       {showAdd && <AddStrategyModal types={types} onClose={() => setShowAdd(false)} />}
       <div className="flex items-center justify-between">
         <p className="text-xs text-gray-400">Automated strategies. Enable/disable, tune parameters, and view logic.</p>
-        <button onClick={() => setShowAdd(true)} className="px-4 py-1.5 bg-brand hover:bg-brand-dark rounded text-sm font-semibold transition-colors">
+        <button onClick={() => setShowAdd(true)} className="px-4 py-1.5 btn-brand-grad rounded text-sm font-semibold transition-colors">
           + Add Strategy
         </button>
       </div>
@@ -542,7 +542,7 @@ function StrategyIndicatorsTab() {
       {showAdd && <AddIndicatorModal types={types} onClose={() => setShowAdd(false)} />}
       <div className="flex items-center justify-between">
         <p className="text-xs text-gray-400">Chart overlays and sub-pane indicators. Toggle, edit name/params/color, or add new ones.</p>
-        <button onClick={() => setShowAdd(true)} className="px-4 py-1.5 bg-brand hover:bg-brand-dark rounded text-sm font-semibold transition-colors">
+        <button onClick={() => setShowAdd(true)} className="px-4 py-1.5 btn-brand-grad rounded text-sm font-semibold transition-colors">
           + Add Indicator
         </button>
       </div>
@@ -806,8 +806,8 @@ function MonitorTab() {
           {liveSignals.length === 0 ? (
             <p className="text-xs text-gray-500">Waiting for strategy signals…</p>
           ) : (
-            <div className="space-y-1.5 max-h-64 overflow-y-auto">
-              {liveSignals.map((s, i) => (
+            <div className="space-y-1.5">
+              {liveSignals.slice(0, 12).map((s, i) => (
                 <div key={i} className="flex items-center gap-2 text-xs">
                   <span className="text-gray-600 flex-shrink-0 text-[10px]">
                     {s.time.toLocaleTimeString()}
@@ -830,8 +830,8 @@ function MonitorTab() {
           {trades.length === 0 ? (
             <p className="text-xs text-gray-500">No trades recorded yet. Run strategies to generate trades.</p>
           ) : (
-            <div className="space-y-1.5 max-h-64 overflow-y-auto">
-              {trades.slice(0, 30).map(t => (
+            <div className="space-y-1.5">
+              {trades.slice(0, 12).map(t => (
                 <div key={t.id} className="flex items-center gap-2 text-xs">
                   <span className={clsx("font-bold px-1.5 py-0.5 rounded text-[10px] flex-shrink-0",
                     t.side === "buy" ? "bg-gain/20 text-gain" : "bg-loss/20 text-loss")}>
@@ -855,15 +855,16 @@ function MonitorTab() {
 
 // ── Backtest constants ─────────────────────────────────────────────────────────
 
-const OSCILLATOR_TYPES = new Set([
-  "rsi","macd","stoch","cci","williams","roc","momentum","zscore","aroon",
-  "obv","mfi","cmf","atr","adx","stddev",
-]);
-
 const BT_STRAT_COLORS: Record<string, string> = {
   rsi_mean_reversion: "#f59e0b",
   ema_crossover:      "#a78bfa",
   vwap_breakout:      "#22d3ee",
+};
+
+const BT_API_TIMEFRAME_BY_WINDOW: Record<"1m" | "3m" | "1y", "1M" | "3M" | "1Y"> = {
+  "1m": "1M",
+  "3m": "3M",
+  "1y": "1Y",
 };
 
 function getBtStratColor(name: string): string {
@@ -872,45 +873,17 @@ function getBtStratColor(name: string): string {
   return SIM_COLORS[h % SIM_COLORS.length];
 }
 
-// ── Backtest helpers ───────────────────────────────────────────────────────────
-
-function btIsVisible(trade: Trade, lastBar: Bar | undefined, intraday: boolean): boolean {
-  if (!lastBar) return false;
-  return intraday
-    ? Math.floor(new Date(trade.filled_at).getTime() / 1000) <= Number(lastBar.time)
-    : trade.filled_at.slice(0, 10) <= String(lastBar.time);
-}
-
-function btBarTime(trade: Trade, allBars: Bar[], intraday: boolean): number | string {
-  if (intraday) {
-    const ts = Math.floor(new Date(trade.filled_at).getTime() / 1000);
-    return allBars.reduce((a, b) =>
-      Math.abs(Number(b.time) - ts) < Math.abs(Number(a.time) - ts) ? b : a
-    , allBars[0])?.time ?? ts;
-  }
-  const d = trade.filled_at.slice(0, 10);
-  return allBars.find(b => String(b.time) === d)?.time ?? d;
-}
-
-// ── Backtest Replay Tab ────────────────────────────────────────────────────────
+// ── Backtest Monitor Tab ──────────────────────────────────────────────────────
 
 function BacktestTab() {
   const [symbol, setSymbol] = useState("SPY");
   const [stratFilter, setStratFilter] = useState("all");
-  const [timeframe, setTimeframe] = useState<"1M"|"3M"|"1Y"|"All">("3M");
-
-  const mainRef    = useRef<HTMLDivElement>(null);
-  const oscRef     = useRef<HTMLDivElement>(null);
-  const equityRef  = useRef<HTMLDivElement>(null);
-  const mainChartRef   = useRef<IChartApi | null>(null);
-  const oscChartRef    = useRef<IChartApi | null>(null);
-  const equityChartRef = useRef<IChartApi | null>(null);
-  const overlaySeriesRef = useRef<Map<string, any[]>>(new Map());
-  const oscSeriesRef     = useRef<Map<string, any[]>>(new Map());
+  const [timeframe, setTimeframe] = useState<"1m"|"3m"|"1y">("3m");
+  const [chartType, setChartType] = useState<"candlestick" | "line">("candlestick");
 
   const { data: chartData } = useQuery({
     queryKey: ["chart", symbol, timeframe],
-    queryFn:  () => api.get(`/chart/${symbol}?timeframe=${timeframe}`).then(r => r.data),
+    queryFn:  () => api.get(`/chart/${symbol}?timeframe=${BT_API_TIMEFRAME_BY_WINDOW[timeframe]}`).then(r => r.data),
   });
   const bars: Bar[]         = chartData?.bars    ?? [];
   const isIntraday: boolean = chartData?.intraday ?? false;
@@ -921,230 +894,11 @@ function BacktestTab() {
   const { data: strategies = {} as StrategiesMap } = useQuery<StrategiesMap>({
     queryKey: ["strategies"], queryFn: () => api.get("/strategies").then(r => r.data),
   });
-  const { data: apiIndicators = {} } = useQuery({
-    queryKey: ["indicators"], queryFn: () => api.get("/indicators").then(r => r.data), staleTime: 60_000,
-  });
-
-  // Active indicator configs split by pane type
-  const activeOverlays = useMemo(() =>
-    Object.entries(apiIndicators as Record<string, IndicatorConfig>)
-      .filter(([, c]) => c.active && !OSCILLATOR_TYPES.has(c.type))
-      .map(([id, c]) => ({ id, ...c }))
-  , [apiIndicators]);
-  const activeOscillators = useMemo(() =>
-    Object.entries(apiIndicators as Record<string, IndicatorConfig>)
-      .filter(([, c]) => c.active && OSCILLATOR_TYPES.has(c.type))
-      .map(([id, c]) => ({ id, ...c }))
-  , [apiIndicators]);
-  const activeKey = [...activeOverlays, ...activeOscillators].map(c => `${c.id}:${c.color}:${JSON.stringify(c.params)}`).join("|");
-
-  // Pre-compute all indicator series from the full bars array (runs only when bars or configs change)
-  const indValues = useMemo(() => {
-    if (bars.length === 0) return {} as Record<string, { type: string; data: unknown }>;
-    const closes = bars.map(b => b.close);
-    const n = (p: Record<string, number | boolean>, k: string, d: number) => Number(p[k]) || d;
-    const res: Record<string, { type: string; data: unknown }> = {};
-    [...activeOverlays, ...activeOscillators].forEach(({ id, type, params }) => {
-      const p = params as Record<string, number | boolean>;
-      if (type === "ema")        res[id] = { type, data: calcEMA(closes, n(p,"period",9)) };
-      else if (type === "sma")   res[id] = { type, data: calcSMA(closes, n(p,"period",20)) };
-      else if (type === "wma")   res[id] = { type, data: calcWMA(closes, n(p,"period",14)) };
-      else if (type === "dema")  res[id] = { type, data: calcDEMA(closes, n(p,"period",21)) };
-      else if (type === "tema")  res[id] = { type, data: calcTEMA(closes, n(p,"period",21)) };
-      else if (type === "hma")   res[id] = { type, data: calcHMA(closes, n(p,"period",14)) };
-      else if (type === "vwma")  res[id] = { type, data: calcVWMA(bars, n(p,"period",20)) };
-      else if (type === "vwap")  res[id] = { type, data: calcVWAP(bars) };
-      else if (type === "vwap_bands") res[id] = { type, data: calcVWAPBands(bars, n(p,"std",2)) };
-      else if (type === "bollinger") res[id] = { type, data: calcBollinger(closes, n(p,"period",20), n(p,"std",2)) };
-      else if (type === "keltner")   res[id] = { type, data: calcKeltner(bars, n(p,"period",20), n(p,"multiplier",2)) };
-      else if (type === "donchian")  res[id] = { type, data: calcDonchian(bars, n(p,"period",20)) };
-      else if (type === "supertrend") res[id] = { type, data: calcSupertrend(bars, n(p,"period",10), n(p,"multiplier",3)) };
-      else if (type === "psar")      res[id] = { type, data: calcParabolicSAR(bars, n(p,"step",0.02), n(p,"max",0.2)) };
-      else if (type === "ichimoku")  res[id] = { type, data: calcIchimoku(bars, n(p,"tenkan",9), n(p,"kijun",26), n(p,"senkou",52)) };
-      else if (type === "rsi")       res[id] = { type, data: calcRSI(closes, n(p,"period",14)) };
-      else if (type === "macd")      res[id] = { type, data: calcMACD(closes, n(p,"fast",12), n(p,"slow",26), n(p,"signal",9)) };
-      else if (type === "stoch")     res[id] = { type, data: calcStochastic(bars, n(p,"period",14), n(p,"smooth",3)) };
-      else if (type === "cci")       res[id] = { type, data: calcCCI(bars, n(p,"period",20)) };
-      else if (type === "williams")  res[id] = { type, data: calcWilliamsR(bars, n(p,"period",14)) };
-      else if (type === "roc")       res[id] = { type, data: calcROC(closes, n(p,"period",12)) };
-      else if (type === "momentum")  res[id] = { type, data: calcMomentum(closes, n(p,"period",10)) };
-      else if (type === "zscore")    res[id] = { type, data: calcZScore(closes, n(p,"period",20)) };
-      else if (type === "aroon")     res[id] = { type, data: calcAroon(bars, n(p,"period",25)) };
-      else if (type === "obv")       res[id] = { type, data: calcOBV(bars) };
-      else if (type === "mfi")       res[id] = { type, data: calcMFI(bars, n(p,"period",14)) };
-      else if (type === "cmf")       res[id] = { type, data: calcCMF(bars, n(p,"period",20)) };
-      else if (type === "atr")       res[id] = { type, data: calcATR(bars, n(p,"period",14)) };
-      else if (type === "adx")       res[id] = { type, data: calcADX(bars, n(p,"period",14)) };
-      else if (type === "stddev")    res[id] = { type, data: calcStdDev(closes, n(p,"period",20)) };
-    });
-    return res;
-  }, [bars, activeKey]);
 
   const trades = useMemo(
     () => allTrades.filter(t => t.symbol === symbol && (stratFilter === "all" || t.strategy === stratFilter)),
     [allTrades, symbol, stratFilter]
   );
-
-  // ── Single combined chart + data effect ──────────────────────────────────────
-  useEffect(() => {
-    if (!mainRef.current || !equityRef.current || bars.length === 0) return;
-
-    const toT = (t: string | number) => t as UTCTimestamp;
-    const base = {
-      layout: { background: { color: "#0d1117" }, textColor: "#6b7280" },
-      grid:   { vertLines: { color: "#1a2332" }, horzLines: { color: "#1a2332" } },
-      rightPriceScale: { borderColor: "#1f2937" },
-      timeScale: { borderColor: "#1f2937", timeVisible: isIntraday, secondsVisible: false },
-      crosshair: { mode: CrosshairMode.Normal },
-    };
-    const allTimeSet = new Set(bars.map(b => String(b.time)));
-
-    // ── Main chart ────────────────────────────────────────────────────────────
-    const mc = createChart(mainRef.current, { ...base, width: mainRef.current.clientWidth, height: 420 });
-    const cs = mc.addCandlestickSeries({ upColor: "#22c55e", downColor: "#ef4444", borderVisible: false, wickUpColor: "#22c55e", wickDownColor: "#ef4444" });
-    cs.setData(bars.map(b => ({ time: toT(b.time), open: b.open, high: b.high, low: b.low, close: b.close })));
-    mainChartRef.current = mc;
-
-    // ── Overlay indicators ────────────────────────────────────────────────────
-    overlaySeriesRef.current.clear();
-    const addL = (lbl: string, color: string, style?: number) =>
-      mc.addLineSeries({ color, lineWidth: 1, lineStyle: style, priceLineVisible: false, title: lbl });
-    const toPoints = (arr: (number | null)[]) =>
-      arr.map((v, i) => v !== null && isFinite(v) ? { time: toT(bars[i].time), value: v } : null)
-         .filter(Boolean) as { time: UTCTimestamp; value: number }[];
-
-    for (const cfg of activeOverlays) {
-      const { id, type, label, color } = cfg;
-      const iv = indValues[id] as { type: string; data: any } | undefined;
-      if (!iv) continue;
-      const { data } = iv;
-      const s: any[] = [];
-      if (["ema","sma","wma","dema","tema","hma","vwma","vwap"].includes(type)) {
-        const ser = addL(label, color, type === "vwap" ? 2 : undefined);
-        ser.setData(toPoints(data)); s.push(ser);
-      } else if (type === "vwap_bands") {
-        s.push(addL(label, color, 2)); s.push(addL(`${label} U`, color, 1)); s.push(addL(`${label} L`, color, 1));
-        s[0].setData(toPoints(data.vwap)); s[1].setData(toPoints(data.upper)); s[2].setData(toPoints(data.lower));
-      } else if (["bollinger","keltner","donchian"].includes(type)) {
-        s.push(addL(`${label} U`, color)); s.push(addL(`${label} M`, color, 2)); s.push(addL(`${label} L`, color));
-        s[0].setData(toPoints(data.upper)); s[1].setData(toPoints(data.mid ?? data.mid)); s[2].setData(toPoints(data.lower));
-      } else if (type === "supertrend") {
-        s.push(mc.addLineSeries({ color: "#22c55e", lineWidth: 1, priceLineVisible: false, title: `${label} ↑` }));
-        s.push(mc.addLineSeries({ color: "#ef4444", lineWidth: 1, priceLineVisible: false, title: `${label} ↓` }));
-        s[0].setData(toPoints(data.up)); s[1].setData(toPoints(data.down));
-      } else if (type === "psar") {
-        const ser = addL(label, color, 1); ser.setData(toPoints(data)); s.push(ser);
-      } else if (type === "ichimoku") {
-        s.push(mc.addLineSeries({ color: "#22c55e", lineWidth: 1, priceLineVisible: false, title: "Tenkan" }));
-        s.push(mc.addLineSeries({ color: "#ef4444", lineWidth: 1, priceLineVisible: false, title: "Kijun" }));
-        s.push(mc.addLineSeries({ color: "#f59e0b", lineWidth: 1, lineStyle: 2, priceLineVisible: false, title: "Span A" }));
-        s.push(mc.addLineSeries({ color: "#8b5cf6", lineWidth: 1, lineStyle: 2, priceLineVisible: false, title: "Span B" }));
-        s[0].setData(toPoints(data.tenkanSen)); s[1].setData(toPoints(data.kijunSen));
-        s[2].setData(toPoints(data.spanA)); s[3].setData(toPoints(data.spanB));
-      }
-      overlaySeriesRef.current.set(id, s);
-    }
-
-    // ── Trade markers ─────────────────────────────────────────────────────────
-    const markers = trades
-      .map(t => {
-        const tm = btBarTime(t, bars, isIntraday);
-        if (!allTimeSet.has(String(tm))) return null;
-        const isBuy = t.side === "buy";
-        return {
-          time: toT(tm as string | number),
-          position: (isBuy ? "belowBar" : "aboveBar") as "belowBar" | "aboveBar",
-          color: getBtStratColor(t.strategy),
-          shape: (isBuy ? "arrowUp" : "arrowDown") as "arrowUp" | "arrowDown",
-          size: 1,
-          text: isBuy
-            ? `↑ ${t.strategy.replace(/_/g," ")} @ ${fmt.currency(t.price)}`
-            : `↓ ${t.strategy.replace(/_/g," ")}${t.pnl !== null ? ` ${Number(t.pnl)>=0?"+":""}${fmt.currency(t.pnl)}` : ""}`,
-        };
-      })
-      .filter((m): m is NonNullable<typeof m> => m !== null)
-      .sort((a, b) => Number(a.time) - Number(b.time));
-    cs.setMarkers(markers);
-
-    // ── Oscillator sub-pane ───────────────────────────────────────────────────
-    let oc: IChartApi | null = null;
-    oscSeriesRef.current.clear();
-    if (oscRef.current && activeOscillators.length > 0) {
-      oc = createChart(oscRef.current, { ...base, width: oscRef.current.clientWidth, height: 130 });
-      for (const cfg of activeOscillators) {
-        const { id, type, label, color } = cfg;
-        const iv = indValues[id] as { type: string; data: any } | undefined;
-        if (!iv) continue;
-        const { data } = iv;
-        const addOL = (lbl: string, c: string) => oc!.addLineSeries({ color: c, lineWidth: 1, priceLineVisible: false, title: lbl });
-        const s: any[] = [];
-        const refLine = (val: number) => bars.map(b => ({ time: toT(b.time), value: val }));
-        if (type === "rsi") {
-          s.push(addOL(label, color)); s.push(addOL("OB","#374151")); s.push(addOL("OS","#374151"));
-          s[0].setData(toPoints(data)); s[1].setData(refLine(70)); s[2].setData(refLine(30));
-        } else if (type === "macd") {
-          s.push(addOL(label, color)); s.push(addOL(`${label} Sig`,"#ef4444")); s.push(oc.addHistogramSeries({ color: "#6366f1", priceLineVisible: false }));
-          s[0].setData(toPoints(data.macd)); s[1].setData(toPoints(data.signal));
-          s[2].setData(toPoints(data.histogram).map((p: any) => ({ ...p, color: p.value >= 0 ? "#22c55e" : "#ef4444" })));
-        } else if (type === "stoch") {
-          s.push(addOL(`${label} %K`, color)); s.push(addOL(`${label} %D`,"#ef4444")); s.push(addOL("OB","#374151")); s.push(addOL("OS","#374151"));
-          s[0].setData(toPoints(data.k)); s[1].setData(toPoints(data.d)); s[2].setData(refLine(80)); s[3].setData(refLine(20));
-        } else if (type === "cci") {
-          s.push(addOL(label, color)); s.push(addOL("","#374151")); s.push(addOL("","#374151"));
-          s[0].setData(toPoints(data)); s[1].setData(refLine(100)); s[2].setData(refLine(-100));
-        } else if (type === "williams") {
-          s.push(addOL(label, color)); s.push(addOL("","#374151")); s.push(addOL("","#374151"));
-          s[0].setData(toPoints(data)); s[1].setData(refLine(-20)); s[2].setData(refLine(-80));
-        } else if (type === "aroon") {
-          s.push(addOL(`${label} Up`,"#22c55e")); s.push(addOL(`${label} Dn`,"#ef4444"));
-          s[0].setData(toPoints(data.up)); s[1].setData(toPoints(data.down));
-        } else {
-          const ser = addOL(label, color); ser.setData(toPoints(Array.isArray(data) ? data : [])); s.push(ser);
-        }
-        oscSeriesRef.current.set(id, s);
-      }
-    }
-    oscChartRef.current = oc;
-
-    // ── Equity / P&L chart ────────────────────────────────────────────────────
-    const ec = createChart(equityRef.current, { ...base, width: equityRef.current.clientWidth, height: 120 });
-    const es = ec.addLineSeries({ color: "#6366f1", lineWidth: 2, priceLineVisible: false, title: "P&L" });
-    let cum = 0;
-    const eqPts: { time: UTCTimestamp; value: number }[] = [];
-    trades.filter(t => t.pnl !== null && t.side === "sell").forEach(t => {
-      cum += Number(t.pnl!);
-      const tm = btBarTime(t, bars, isIntraday);
-      if (allTimeSet.has(String(tm))) eqPts.push({ time: toT(tm as string | number), value: cum });
-    });
-    if (eqPts.length > 0) es.setData(eqPts.sort((a, b) => Number(a.time) - Number(b.time)));
-    equityChartRef.current = ec;
-
-    // ── X-axis sync (scroll main → sync all) ─────────────────────────────────
-    let syncing = false;
-    mc.timeScale().subscribeVisibleLogicalRangeChange(range => {
-      if (syncing || !range) return;
-      syncing = true;
-      oc?.timeScale().setVisibleLogicalRange(range);
-      ec.timeScale().setVisibleLogicalRange(range);
-      syncing = false;
-    });
-
-    mc.timeScale().fitContent();
-
-    // ── Resize ────────────────────────────────────────────────────────────────
-    const ro = new ResizeObserver(() => {
-      if (mainRef.current) mc.applyOptions({ width: mainRef.current.clientWidth });
-      if (oscRef.current && oc) oc.applyOptions({ width: oscRef.current.clientWidth });
-      if (equityRef.current) ec.applyOptions({ width: equityRef.current.clientWidth });
-    });
-    [mainRef, oscRef, equityRef].forEach(r => { if (r.current) ro.observe(r.current); });
-
-    return () => {
-      mc.remove(); oc?.remove(); ec.remove(); ro.disconnect();
-      mainChartRef.current = null; oscChartRef.current = null; equityChartRef.current = null;
-      overlaySeriesRef.current.clear(); oscSeriesRef.current.clear();
-    };
-  }, [bars, trades, isIntraday, activeKey, indValues]);
 
   // ── Stats (all trades in period) ──────────────────────────────────────────
   const simStats = useMemo(() => {
@@ -1156,7 +910,6 @@ function BacktestTab() {
   }, [trades]);
 
   const firstBar = bars[0], lastBar = bars[bars.length - 1];
-  const tradeStrategies = [...new Set((trades as Trade[]).map(t => t.strategy))] as string[];
 
   return (
     <div className="space-y-4">
@@ -1177,8 +930,19 @@ function BacktestTab() {
             ))}
           </select>
         </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400">Chart</span>
+          <select
+            value={chartType}
+            onChange={e => setChartType(e.target.value as "candlestick" | "line")}
+            className="bg-surface border border-border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-brand"
+          >
+            <option value="candlestick">Candlestick</option>
+            <option value="line">Line</option>
+          </select>
+        </div>
         <div className="flex gap-1">
-          {(["1M","3M","1Y","All"] as const).map(tf => (
+          {(["1m","3m","1y"] as const).map(tf => (
             <button key={tf} onClick={() => setTimeframe(tf)}
               className={clsx("px-2.5 py-1 rounded text-xs font-medium transition-colors",
                 timeframe === tf ? "bg-brand text-white" : "text-gray-400 hover:bg-border hover:text-white")}>
@@ -1188,16 +952,22 @@ function BacktestTab() {
         </div>
         <div className="ml-auto flex items-center gap-2 text-xs text-gray-500">
           {firstBar && lastBar && (
-            <span>{String(firstBar.time)} → {String(lastBar.time)} · {bars.length} bars</span>
+            <span className="font-mono">{bars.length} bars loaded · {String(firstBar.time)} → {String(lastBar.time)}</span>
           )}
-          <span className="text-gray-600">Drag to pan · Scroll to zoom</span>
+          <span className="text-faint">← drag to scroll →</span>
         </div>
       </div>
 
       {/* ── Stats ── */}
       <div className="grid grid-cols-5 gap-3">
-        {[
-          { label: "Period", value: timeframe, sub: firstBar ? `${String(firstBar.time)} – ${String(lastBar?.time)}` : "—" },
+          {[
+            { label: "Window", value: timeframe, sub: lastBar ? (() => {
+              const d = new Date(String(lastBar.time) + "T00:00:00Z");
+              if (timeframe === "1m") d.setUTCMonth(d.getUTCMonth() - 1);
+              else if (timeframe === "3m") d.setUTCMonth(d.getUTCMonth() - 3);
+              else d.setUTCFullYear(d.getUTCFullYear() - 1);
+              return `${d.toISOString().slice(0,10)} – ${String(lastBar.time)}`;
+            })() : "—" },
           { label: "Last Close", value: lastBar ? fmt.currency(lastBar.close) : "—", sub: `of ${bars.length} bars` },
           { label: "Sim P&L", value: simStats.count > 0 ? fmt.currency(simStats.pnl) : "—", color: simStats.pnl >= 0 ? "text-gain" : "text-loss" },
           { label: "Win Rate", value: simStats.count > 0 ? `${simStats.winRate.toFixed(1)}%` : "—", color: simStats.winRate >= 50 ? "text-gain" : "text-loss" },
@@ -1211,34 +981,6 @@ function BacktestTab() {
         ))}
       </div>
 
-      {/* Strategy / indicator legend */}
-      {(tradeStrategies.length > 0 || activeOverlays.length > 0) && (
-        <div className="flex items-center gap-4 flex-wrap text-xs">
-          {tradeStrategies.length > 0 && (
-            <>
-              <span className="text-gray-500">Markers:</span>
-              {tradeStrategies.map(name => (
-                <span key={name} className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: getBtStratColor(name) }} />
-                  <span className="text-gray-300">{BUILTIN_LABELS[name] ?? name.replace(/_/g," ")}</span>
-                </span>
-              ))}
-              <span className="text-gray-600">↑ Buy &nbsp; ↓ Sell</span>
-            </>
-          )}
-          {activeOverlays.length > 0 && (
-            <span className="flex items-center gap-2 text-gray-500 border-l border-border pl-3">
-              Overlays: {activeOverlays.map(c => (
-                <span key={c.id} className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: c.color }} />
-                  <span className="text-gray-400">{c.label}</span>
-                </span>
-              ))}
-            </span>
-          )}
-        </div>
-      )}
-
       {/* ── Main price chart ── */}
       <div className="bg-panel border border-border rounded-lg overflow-hidden">
         {bars.length === 0 ? (
@@ -1246,30 +988,10 @@ function BacktestTab() {
             Loading {symbol} chart data…
           </div>
         ) : (
-          <div ref={mainRef} className="w-full" style={{ height: 420 }} />
+          <div style={{ height: 420 }}>
+            <PriceChart bars={bars} symbol={symbol} chartType={chartType} intraday={isIntraday} visiblePeriod={timeframe} />
+          </div>
         )}
-      </div>
-
-      {/* ── Oscillator sub-pane ── */}
-      <div className={clsx("bg-panel border border-border rounded-lg overflow-hidden",
-        activeOscillators.length > 0 && bars.length > 0 ? "block" : "hidden")}>
-        <p className="text-[10px] text-gray-600 uppercase tracking-widest px-3 pt-2">
-          {activeOscillators.map(c => c.label).join(" / ")}
-        </p>
-        <div ref={oscRef} className="w-full" style={{ height: 130 }} />
-      </div>
-
-      {/* ── Equity P&L ── */}
-      <div className="bg-panel border border-border rounded-lg overflow-hidden">
-        <div className="flex items-center justify-between px-3 pt-2 pb-0">
-          <p className="text-[10px] text-gray-600 uppercase tracking-widest">Simulated P&L Curve — scroll synced with price chart</p>
-          {simStats.count > 0 && (
-            <span className={clsx("text-xs font-semibold", simStats.pnl >= 0 ? "text-gain" : "text-loss")}>
-              {simStats.pnl >= 0 ? "+" : ""}{fmt.currency(simStats.pnl)} total
-            </span>
-          )}
-        </div>
-        <div ref={equityRef} className="w-full" style={{ height: 120 }} />
       </div>
 
       {/* ── Trade log (flat, no scroll) ── */}
@@ -1334,7 +1056,7 @@ export default function Strategies() {
             ["trading",    "Trading"],
             ["indicators", "Indicators"],
             ["monitor",    "Monitor"],
-            ["backtest",   "Backtest Replay"],
+            ["backtest",   "Backtest Monitor"],
           ] as const).map(([t, label]) => (
             <button key={t} onClick={() => setTab(t)}
               className={clsx("px-4 py-1.5 font-medium transition-colors",

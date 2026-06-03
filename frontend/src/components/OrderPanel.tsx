@@ -68,7 +68,7 @@ export default function OrderPanel() {
       )}
 
       {!confirm ? (
-        <button className="w-full py-2 bg-brand hover:bg-brand-dark rounded text-sm font-semibold transition-colors"
+        <button className="w-full py-2 btn-brand-grad rounded text-sm font-semibold"
           onClick={() => setConfirm(true)}>
           Review Order
         </button>

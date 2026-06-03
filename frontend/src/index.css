@@ -2,13 +2,202 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── App body base — landing-page dark theme ─────────────────────────────── */
 body {
-  background-color: #111827;
-  color: #f9fafb;
-  font-family: 'Inter', system-ui, sans-serif;
+  background-color: #07070c;
+  color: #f3f3f8;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.01em;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #1f2937; }
-::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+/* ── Scrollbar ────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #07070c; }
+::-webkit-scrollbar-thumb { background: #1f2235; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #2a2a42; }
+
+/* ── Selection ────────────────────────────────────────────────────────────── */
+::selection { background: #8b5cf6; color: #fff; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   APP DASHBOARD — LANDING-MATCH OVERRIDES
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Page-level h2 headings → gradient text (matches landing section heads) */
+main h2.font-bold,
+main h2.text-lg {
+  background: linear-gradient(115deg, #818cf8 0%, #8b5cf6 45%, #22d3ee 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  display: inline-block; /* required for bg-clip to work */
+}
+
+/* Primary action buttons → brand gradient (like landing CTAs) */
+.btn-brand-grad {
+  background: linear-gradient(115deg, #6366f1, #a855f7);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.08) inset, 0 6px 20px -8px rgba(99,102,241,0.55);
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+.btn-brand-grad:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.14) inset, 0 10px 28px -8px rgba(99,102,241,0.65);
+}
+
+/* Subtle glow on brand-colored elements */
+.brand-glow { box-shadow: 0 0 18px rgba(99,102,241,0.45); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LANDING PAGE UTILITIES
+   All prefixed with .ld- or scoped under [data-landing] so they
+   cannot leak into the dashboard.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Grid background (hero section) */
+.ld-grid-bg {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.028) 1px, transparent 1px);
+  background-size: 54px 54px;
+  mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, #000 35%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, #000 35%, transparent 78%);
+}
+
+/* Glow blobs */
+.ld-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.6;
+  pointer-events: none;
+}
+.ld-glow-1 {
+  width: 620px; height: 620px;
+  top: -180px; left: 50%; transform: translateX(-50%);
+  background: radial-gradient(circle, rgba(99,102,241,0.55), transparent 65%);
+}
+.ld-glow-2 {
+  width: 520px; height: 520px;
+  top: 40px; left: 8%;
+  background: radial-gradient(circle, rgba(139,92,246,0.35), transparent 65%);
+}
+.ld-glow-3 {
+  width: 480px; height: 480px;
+  top: 120px; right: 4%;
+  background: radial-gradient(circle, rgba(34,211,238,0.22), transparent 65%);
+}
+
+/* Gradient text clip */
+.ld-grad-text {
+  background: linear-gradient(115deg, #818cf8 0%, #8b5cf6 45%, #22d3ee 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Inset card border (landing style — replaces visible border) */
+.ld-card {
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.07) inset;
+}
+.ld-card-strong {
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.13) inset;
+}
+.ld-card-indigo {
+  box-shadow: 0 0 0 1px #6366f1 inset, 0 0 30px -14px rgba(99,102,241,0.55);
+}
+
+/* Hero dashboard preview tilt */
+.ld-dash-tilt {
+  transform: rotateX(7deg) scale(0.99);
+  transform-origin: center top;
+}
+
+/* Scroll-reveal: transform-only so content stays visible under reduced-motion */
+.ld-sr {
+  transform: translateY(26px);
+  transition: transform 0.8s cubic-bezier(.2,.7,.2,1);
+}
+.ld-sr.in { transform: none; }
+.ld-sr-2  { transition-delay: 0.08s; }
+.ld-sr-3  { transition-delay: 0.16s; }
+.ld-sr-4  { transition-delay: 0.24s; }
+
+/* Hero section entry animations (transform-only) */
+.ld-reveal-up {
+  transform: translateY(24px);
+  animation: ldRevealUp 0.9s cubic-bezier(.2,.7,.2,1) forwards;
+}
+.ld-d1 { animation-delay: 0.05s; }
+.ld-d2 { animation-delay: 0.15s; }
+.ld-d3 { animation-delay: 0.25s; }
+.ld-d4 { animation-delay: 0.35s; }
+.ld-d5 { animation-delay: 0.50s; }
+.ld-d6 { animation-delay: 0.65s; }
+
+@keyframes ldRevealUp { to { transform: none; } }
+
+/* Live dot pulse */
+.ld-live-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #2bd576;
+  box-shadow: 0 0 8px #2bd576;
+  animation: ldPulse 2s infinite;
+}
+@keyframes ldPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* Ticker marquee fade mask */
+.ld-ticker-mask {
+  mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+}
+
+/* Nav blur-glass when scrolled */
+.ld-nav-scrolled {
+  background: rgba(8,8,14,0.72) !important;
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  border-bottom-color: rgba(255,255,255,0.07) !important;
+}
+
+/* Eyebrow label before-line decoration via pseudo */
+.ld-eyebrow::before {
+  content: "";
+  width: 22px; height: 1px;
+  background: linear-gradient(90deg, transparent, #818cf8);
+  flex-shrink: 0;
+}
+
+/* Code snippet syntax colors */
+.ld-kw  { color: #8b5cf6; }
+.ld-fn  { color: #22d3ee; }
+.ld-nm  { color: #2bd576; }
+.ld-cm  { color: #6a6a7d; }
+
+/* Feature card cursor glow (CSS var driven) */
+.ld-feat::after {
+  content: "";
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(400px circle at var(--mx,50%) var(--my,0%), rgba(99,102,241,0.1), transparent 60%);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.ld-feat:hover::after { opacity: 1; }
+
+/* Reduced-motion: freeze all landing animations */
+@media (prefers-reduced-motion: reduce) {
+  .ld-sr, .ld-reveal-up {
+    transform: none !important;
+    transition: none !important;
+    animation: none !important;
+  }
+  .ld-ticker-track { animation: none !important; }
+  .ld-live-dot { animation: none !important; }
+}

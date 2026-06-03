@@ -1,12 +1,44 @@
 .env
+.env.*
+!.env.example
+
+# Node
 node_modules/
+frontend/node_modules/
+backend/node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
+*.pyd
+*.so
+*.egg
+
+# Build artifacts
 dist/
 build/
 *.egg-info/
+.coverage
+coverage/
+
+# Virtual environments
 .venv/
 venv/
+
+# Caches/IDE
+.mypy_cache/
+.ruff_cache/
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Runtime data
 pg_data/
+*.sqlite3

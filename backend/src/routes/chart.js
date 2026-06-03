@@ -26,6 +26,14 @@ const TIMEFRAME_MAP = {
   "All": { timeframe: "1Week", days: 1825, intraday: false },
 };
 
+const BAR_TIMEFRAME_MAP = {
+  "5Min":  { timeframe: "5Min", intraday: true },
+  "15Min": { timeframe: "15Min", intraday: true },
+  "1Hour": { timeframe: "1Hour", intraday: true },
+  "1Day":  { timeframe: "1Day", intraday: false },
+  "1Week": { timeframe: "1Week", intraday: false },
+};
+
 function daysAgo(n) {
   const d = new Date();
   d.setDate(d.getDate() - n);
@@ -37,6 +45,10 @@ router.get("/:symbol", async (req, res) => {
   const symbol = req.params.symbol.toUpperCase();
   const tf = req.query.timeframe || "1M";
   const cfg = TIMEFRAME_MAP[tf] ?? TIMEFRAME_MAP["1M"];
+  const barTf = typeof req.query.barTimeframe === "string" ? req.query.barTimeframe : "";
+  const barCfg = BAR_TIMEFRAME_MAP[barTf] ?? null;
+  const timeframe = barCfg?.timeframe ?? cfg.timeframe;
+  const intraday = barCfg?.intraday ?? cfg.intraday;
 
   try {
     const { data } = await axios.get(
@@ -44,7 +56,7 @@ router.get("/:symbol", async (req, res) => {
       {
         headers: headers(),
         params: {
-          timeframe: cfg.timeframe,
+          timeframe,
           start: daysAgo(cfg.days),
           end: new Date().toISOString(),
           limit: 1000,
@@ -56,13 +68,13 @@ router.get("/:symbol", async (req, res) => {
     );
 
     const bars = (data.bars ?? []).map((b) => ({
-      time: cfg.intraday
+      time: intraday
         ? Math.floor(new Date(b.t).getTime() / 1000)
         : b.t.slice(0, 10),
       open: b.o, high: b.h, low: b.l, close: b.c, volume: b.v,
     }));
 
-    res.json({ symbol, timeframe: tf, intraday: cfg.intraday, bars });
+    res.json({ symbol, timeframe: tf, intraday, bars, bar_timeframe: timeframe });
   } catch (err) {
     const status = err.response?.status || 500;
     res.status(status).json({ error: err.response?.data?.message || err.message });

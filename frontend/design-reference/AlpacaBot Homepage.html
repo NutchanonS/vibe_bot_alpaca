@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AlpacaBot — Automated trading, on autopilot</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+
+  <!-- ============ NAV ============ -->
+  <nav class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="#top">
+        <span class="brand-mark"><i></i><span></span></span>
+        <span class="brand-name">Alpaca<b>Bot</b></span>
+      </a>
+      <div class="nav-links">
+        <a href="#engine">Engine</a>
+        <a href="#strategies">Strategies</a>
+        <a href="#charting">Charting</a>
+        <a href="#backtest">Backtesting</a>
+        <a href="#stack">Stack</a>
+      </div>
+      <div class="nav-cta">
+        <a class="nav-ghost" href="#stack">Docs</a>
+        <a class="btn btn-primary" href="#launch">Launch App <span class="arr">→</span></a>
+      </div>
+    </div>
+  </nav>
+
+  <span id="top"></span>
+
+  <!-- ============ HERO ============ -->
+  <header class="hero">
+    <div class="hero-bg">
+      <div class="grid-bg"></div>
+      <div class="glow glow-1"></div>
+      <div class="glow glow-2"></div>
+      <div class="glow glow-3"></div>
+    </div>
+    <div class="wrap hero-inner">
+      <span class="chip reveal-up d1"><span class="dot"></span>Live on <b>Alpaca</b> · Paper &amp; Production</span>
+      <h1 class="reveal-up d2">Automated trading,<br /><span class="grad-text">on autopilot.</span></h1>
+      <p class="hero-sub reveal-up d3">A self-hosted trading engine that runs Python strategies against live market data — signals, risk, and execution in milliseconds. Backtest, deploy, and watch it work.</p>
+      <div class="hero-actions reveal-up d4">
+        <a class="btn btn-primary btn-lg" href="#launch">Launch the dashboard <span class="arr">→</span></a>
+        <a class="btn btn-ghost btn-lg" href="#engine">See how the engine works</a>
+      </div>
+      <div class="hero-trust reveal-up d5">
+        <p>Built on a battle-tested open stack</p>
+        <div class="trust-row">
+          <span>Alpaca API</span>
+          <span>Python</span>
+          <span>PostgreSQL</span>
+          <span>Redis</span>
+          <span>Docker</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- mini dashboard preview -->
+    <div class="wrap preview-wrap reveal-up d6">
+      <div class="preview-glow"></div>
+      <div class="dash">
+        <div class="dash-top">
+          <div class="dash-dots"><i></i><i></i><i></i></div>
+          <div class="dash-url mono">app.alpacabot.local / overview</div>
+          <div class="dash-live"><i></i>LIVE</div>
+        </div>
+        <div class="dash-body">
+          <!-- watchlist -->
+          <div class="dash-watch">
+            <p class="lbl">Watchlist</p>
+            <div class="wl-item active"><span class="wl-sym">SPY</span><span class="wl-chg gain">+0.62%</span></div>
+            <div class="wl-item"><span class="wl-sym">AAPL</span><span class="wl-chg gain">+1.14%</span></div>
+            <div class="wl-item"><span class="wl-sym">TSLA</span><span class="wl-chg loss">−2.08%</span></div>
+            <div class="wl-item"><span class="wl-sym">NVDA</span><span class="wl-chg gain">+3.41%</span></div>
+            <div class="wl-item"><span class="wl-sym">QQQ</span><span class="wl-chg gain">+0.88%</span></div>
+            <div class="wl-item"><span class="wl-sym">MSFT</span><span class="wl-chg loss">−0.42%</span></div>
+          </div>
+          <!-- chart -->
+          <div class="dash-chart">
+            <div class="dc-head">
+              <span class="dc-sym">SPY</span>
+              <span class="dc-price mono">$564.21</span>
+              <span class="dc-chg gain mono">+3.47 (+0.62%)</span>
+              <div class="dc-tfs mono">
+                <span class="dc-tf on">1D</span><span class="dc-tf">1W</span><span class="dc-tf">1M</span><span class="dc-tf">1Y</span>
+              </div>
+            </div>
+            <div class="dc-canvas" id="heroChart"></div>
+          </div>
+          <!-- order panel -->
+          <div class="dash-order">
+            <p class="do-lbl">Place Order</p>
+            <div class="bs-toggle"><button class="buy on">Buy</button><button class="sell">Sell</button></div>
+            <div class="field"><label>Symbol</label><div class="inp"><span>SPY</span><span>◎</span></div></div>
+            <div class="field"><label>Order Type</label><div class="inp"><span>Market</span><span>▾</span></div></div>
+            <div class="field"><label>Qty / Shares</label><div class="inp"><span>10</span><span>≈ $5,642</span></div></div>
+            <button class="do-submit">Review Buy Order</button>
+            <div class="do-acct">
+              <div class="row"><span>Cash</span><span>$48,210.55</span></div>
+              <div class="row"><span>Buying Power</span><span>$96,421.10</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ TICKER ============ -->
+  <div class="ticker"><div class="ticker-track" id="tickerTrack"></div></div>
+
+  <!-- ============ ENGINE / PIPELINE ============ -->
+  <section class="section-pad" id="engine">
+    <div class="wrap">
+      <div class="section-head sr">
+        <span class="eyebrow">The engine</span>
+        <h2>From market tick to filled order — in milliseconds.</h2>
+        <p>Every bar streamed from Alpaca runs through a deterministic pipeline. Strategies stay pure: they read data and emit signals. The engine handles risk and execution.</p>
+      </div>
+      <div class="pipeline sr sr-2">
+        <div class="pipe-node">
+          <div class="pipe-num">01</div>
+          <h4>Market Data</h4>
+          <p>Live REST + WebSocket feeds, cached in Redis. Bars on 5m / 15m / 1h timeframes.</p>
+        </div>
+        <div class="pipe-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="pipe-node">
+          <div class="pipe-num">02</div>
+          <h4>Strategy Engine</h4>
+          <p>Pure-Python strategies compute indicators and emit BUY / SELL / HOLD signals.</p>
+        </div>
+        <div class="pipe-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="pipe-node">
+          <div class="pipe-num">03</div>
+          <h4>Risk Manager</h4>
+          <p>Position sizing, max-drawdown kill-switch, and per-trade exposure caps.</p>
+        </div>
+        <div class="pipe-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="pipe-node">
+          <div class="pipe-num">04</div>
+          <h4>Order Manager</h4>
+          <p>Places, tracks, and cancels orders through Alpaca. Every fill is persisted.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STRATEGIES ============ -->
+  <section class="section-pad" id="strategies" style="padding-top:0;">
+    <div class="wrap">
+      <div class="section-head sr">
+        <span class="eyebrow">Strategies</span>
+        <h2>Three battle-tested strategies. Or write your own.</h2>
+        <p>Each ships with documented logic, tunable parameters, and live signal markers. Extend the <code class="mono" style="color:var(--indigo-2)">BaseStrategy</code> interface and register a new one in a single line.</p>
+      </div>
+
+      <div class="strat-tabs sr sr-2">
+        <button class="strat-tab on" data-strat="rsi">
+          <span class="st-name"><span class="st-dot" style="background:#f59e0b"></span>RSI Mean Reversion</span>
+          <span class="st-tf">15m bars · range-bound markets</span>
+        </button>
+        <button class="strat-tab" data-strat="ema">
+          <span class="st-name"><span class="st-dot" style="background:#8b5cf6"></span>EMA Crossover</span>
+          <span class="st-tf">1h bars · trending markets</span>
+        </button>
+        <button class="strat-tab" data-strat="vwap">
+          <span class="st-name"><span class="st-dot" style="background:#22d3ee"></span>VWAP Breakout</span>
+          <span class="st-tf">5m bars · intraday momentum</span>
+        </button>
+      </div>
+
+      <div class="strat-panel sr sr-3">
+        <div class="strat-info">
+          <!-- RSI -->
+          <div class="strat-content" data-strat="rsi">
+            <p class="st-desc">Exploits mean reversion — prices that stretch too far from their average tend to snap back. RSI measures the speed and magnitude of moves on a 0–100 scale.</p>
+            <div class="sig-list">
+              <div class="sig"><span class="sig-tag buy">▲ BUY</span><p>RSI(14) drops below <code>oversold</code> (30) — price is exhausted, likely to bounce.</p></div>
+              <div class="sig"><span class="sig-tag sell">▼ SELL</span><p>RSI(14) rises above <code>overbought</code> (70) — the rally is extended, likely to fade.</p></div>
+              <div class="sig"><span class="sig-tag filt">◈ FILTER</span><p>Optional Bollinger confirmation — price must touch the lower / upper band.</p></div>
+            </div>
+            <div class="st-meta">
+              <div class="good"><div class="k">Best for</div><div class="v">Sideways, range-bound markets. Index ETFs like SPY, QQQ.</div></div>
+              <div class="bad"><div class="k">Avoid when</div><div class="v">Strong trends — RSI can stay oversold for a long time.</div></div>
+            </div>
+          </div>
+          <!-- EMA -->
+          <div class="strat-content" data-strat="ema" hidden>
+            <p class="st-desc">A trend-following crossover system. When the fast EMA pushes above the slow EMA, momentum is shifting up — a golden cross. The reverse is a death cross.</p>
+            <div class="sig-list">
+              <div class="sig"><span class="sig-tag buy">▲ BUY</span><p>EMA(9) crosses above EMA(21) <em>and</em> volume &gt; average × <code>multiplier</code>.</p></div>
+              <div class="sig"><span class="sig-tag sell">▼ SELL</span><p>EMA(9) crosses below EMA(21) — momentum has rolled over.</p></div>
+              <div class="sig"><span class="sig-tag filt">◈ VOLUME</span><p>The move must be confirmed by above-average volume to avoid whipsaws.</p></div>
+            </div>
+            <div class="st-meta">
+              <div class="good"><div class="k">Best for</div><div class="v">Trending markets with momentum. Tech names, crypto.</div></div>
+              <div class="bad"><div class="k">Avoid when</div><div class="v">Choppy, sideways tape — false crossovers pile up.</div></div>
+            </div>
+          </div>
+          <!-- VWAP -->
+          <div class="strat-content" data-strat="vwap" hidden>
+            <p class="st-desc">An intraday momentum play. VWAP is the institutional “fair value” benchmark. A break above it on unusual volume signals real buying pressure.</p>
+            <div class="sig-list">
+              <div class="sig"><span class="sig-tag buy">▲ BUY</span><p>Price breaks above VWAP <em>and</em> volume z-score &gt; <code>threshold</code> (1.5).</p></div>
+              <div class="sig"><span class="sig-tag sell">▼ SELL</span><p>Price falls back below VWAP — the breakout failed or the target is hit.</p></div>
+              <div class="sig"><span class="sig-tag filt">◈ Z-SCORE</span><p>z = (volume − avg) / std — filters out low-conviction noise.</p></div>
+            </div>
+            <div class="st-meta">
+              <div class="good"><div class="k">Best for</div><div class="v">Liquid large-caps, intraday, high-volume market open.</div></div>
+              <div class="bad"><div class="k">Avoid when</div><div class="v">Daily charts (VWAP resets) and thin pre/post-market.</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="strat-visual">
+          <div class="strat-chart" id="stratChart"></div>
+          <div class="strat-code">
+            <div class="cap">signal · python</div>
+            <pre><span class="cm"># strategy returns a pure Signal</span>
+<span class="kw">if</span> rsi &lt; oversold:
+    signal = <span class="nm">BUY</span>
+<span class="kw">elif</span> rsi &gt; overbought:
+    signal = <span class="nm">SELL</span>
+
+<span class="kw">if</span> use_bollinger:
+    <span class="kw">if</span> signal == BUY <span class="kw">and</span> close &gt; lower:
+        signal = HOLD</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CHARTING ============ -->
+  <section class="section-pad" id="charting" style="padding-top:0;">
+    <div class="wrap">
+      <div class="section-head sr">
+        <span class="eyebrow">Live charting</span>
+        <h2>30+ indicators. Toggle any overlay, live.</h2>
+        <p>A TradingView-grade candlestick engine with moving averages, channels, oscillators, and volume studies. Click a chip to drop it on the chart.</p>
+      </div>
+
+      <div class="chart-card sr sr-2">
+        <div class="chart-toolbar">
+          <span class="ct-sym">SPY</span>
+          <span class="ct-price mono">$564.21</span>
+          <span class="ct-chg gain mono">+0.62%</span>
+          <div class="ind-chips">
+            <button class="ind-chip" data-ind="ema9"><span class="sw"></span>EMA 9</button>
+            <button class="ind-chip" data-ind="ema21"><span class="sw"></span>EMA 21</button>
+            <button class="ind-chip" data-ind="sma50"><span class="sw"></span>SMA 50</button>
+            <button class="ind-chip" data-ind="vwap"><span class="sw"></span>VWAP</button>
+            <button class="ind-chip" data-ind="boll"><span class="sw"></span>Bollinger</button>
+          </div>
+        </div>
+        <div class="chart-stage">
+          <div class="chart-legend" id="chartLegend"></div>
+          <div id="mainChart" style="width:100%;height:100%;"></div>
+        </div>
+      </div>
+
+      <div class="ind-grid sr sr-3">
+        <div class="ind-cat"><h5>Moving Averages</h5><p>EMA · SMA · WMA<br/>DEMA · TEMA · HMA · VWMA</p></div>
+        <div class="ind-cat"><h5>Channels</h5><p>Bollinger Bands<br/>Keltner · Donchian</p></div>
+        <div class="ind-cat"><h5>Trend</h5><p>VWAP · Supertrend<br/>Parabolic SAR · Ichimoku</p></div>
+        <div class="ind-cat"><h5>Oscillators</h5><p>RSI · MACD · Stochastic<br/>CCI · Williams %R · Aroon</p></div>
+        <div class="ind-cat"><h5>Volume</h5><p>OBV · MFI · CMF<br/>Volume z-score</p></div>
+        <div class="ind-cat"><h5>Volatility</h5><p>ATR · ADX<br/>Std-dev · ROC</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ BACKTEST ============ -->
+  <section class="section-pad" id="backtest" style="padding-top:0;">
+    <div class="wrap">
+      <div class="section-head sr">
+        <span class="eyebrow">Backtesting &amp; replay</span>
+        <h2>Replay every trade before you risk a cent.</h2>
+        <p>Run any strategy against historical bars, step through fills on the chart, and read the metrics that matter — win rate, Sharpe, max drawdown, cumulative P&amp;L.</p>
+      </div>
+
+      <div class="bt-wrap sr sr-2">
+        <div class="bt-chart-card">
+          <div class="bt-head">
+            <h4>Cumulative equity</h4>
+            <span class="tag mono">RSI Mean Reversion · SPY · 90d</span>
+          </div>
+          <div class="bt-equity" id="eqChart"></div>
+        </div>
+        <div class="bt-metrics">
+          <div class="bt-metric"><span class="k">Total Return</span><span class="v gain" data-count="34.8" data-dec="1" data-prefix="+" data-suffix="%">+34.8%</span><span class="s">vs +11.2% buy &amp; hold</span></div>
+          <div class="bt-metric"><span class="k">Win Rate</span><span class="v" data-count="61.4" data-dec="1" data-suffix="%">61.4%</span><span class="s">142 of 231 trades</span></div>
+          <div class="bt-metric"><span class="k">Sharpe</span><span class="v" data-count="1.87" data-dec="2">1.87</span><span class="s">risk-adjusted</span></div>
+          <div class="bt-metric"><span class="k">Max Drawdown</span><span class="v loss" data-count="8.2" data-dec="1" data-prefix="−" data-suffix="%">−8.2%</span><span class="s">peak to trough</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STATS BAND ============ -->
+  <section class="wrap" style="padding-bottom:120px;">
+    <div class="stat-band sr">
+      <div class="stat"><div class="v grad-text" data-count="30" data-suffix="+">30+</div><div class="k">Built-in indicators</div></div>
+      <div class="stat"><div class="v grad-text" data-count="100" data-prefix="&lt;" data-suffix="ms">&lt;100ms</div><div class="k">Signal-to-order latency</div></div>
+      <div class="stat"><div class="v grad-text" data-count="24" data-suffix="/7">24/7</div><div class="k">Autonomous monitoring</div></div>
+      <div class="stat"><div class="v grad-text" data-count="6" data-suffix="">6</div><div class="k">Dockerized services</div></div>
+    </div>
+  </section>
+
+  <!-- ============ STACK / FEATURES ============ -->
+  <section class="section-pad" id="stack" style="padding-top:0;">
+    <div class="wrap">
+      <div class="section-head sr">
+        <span class="eyebrow">The stack</span>
+        <h2>Engineered like production infrastructure.</h2>
+        <p>Every service runs in its own container, wired together by a single <code class="mono" style="color:var(--indigo-2)">docker-compose up</code>. Sandbox and live trading switch with one env var.</p>
+      </div>
+
+      <div class="feat-grid sr sr-2">
+        <div class="feat">
+          <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10" stroke-linecap="round"/></svg></div>
+          <h4>Python Strategy Engine</h4>
+          <p>Pure strategies that read bars and return signals. No I/O, no side effects — easy to test, easy to extend.</p>
+          <div class="tags"><span>alpaca-py</span><span>pandas-ta</span><span>apscheduler</span></div>
+        </div>
+        <div class="feat">
+          <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <h4>Alpaca REST + WebSocket</h4>
+          <p>Real-time quotes and bars over WebSocket, order routing over REST. Paper and production behind one switch.</p>
+          <div class="tags"><span>live feeds</span><span>paper · live</span></div>
+        </div>
+        <div class="feat">
+          <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18M5 8l7-5 7 5M5 16l7 5 7-5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <h4>Risk Manager</h4>
+          <p>Position sizing as a % of equity, per-trade caps, and a hard max-drawdown kill-switch that flattens everything.</p>
+          <div class="tags"><span>drawdown guard</span><span>stop-loss</span></div>
+        </div>
+        <div class="feat">
+          <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" stroke-linecap="round"/></svg></div>
+          <h4>PostgreSQL + Redis</h4>
+          <p>Every trade, order, and snapshot persisted in Postgres. Redis caches live prices for sub-millisecond reads.</p>
+          <div class="tags"><span>trade history</span><span>live cache</span></div>
+        </div>
+        <div class="feat">
+          <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="11" width="6" height="6" rx="1"/><rect x="9" y="11" width="6" height="6" rx="1"/><rect x="6" y="5" width="6" height="6" rx="1"/><path d="M2 20h20" stroke-linecap="round"/></svg></div>
+          <h4>Dockerized, One Command</h4>
+          <p>Strategy, backend, frontend, database, cache, and an Nginx reverse proxy — orchestrated with a single command.</p>
+          <div class="tags"><span>docker-compose</span><span>nginx</span></div>
+        </div>
+        <div class="feat">
+          <div class="feat-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <h4>Alerts &amp; Notifications</h4>
+          <p>Strategy signals and price alerts pushed in real time — optional Telegram and Discord webhooks built in.</p>
+          <div class="tags"><span>telegram</span><span>discord</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FINAL CTA ============ -->
+  <section class="section-pad cta-band" id="launch" style="padding-top:0;">
+    <div class="wrap">
+      <div class="cta-card sr">
+        <div class="glow glow-2" style="top:auto;bottom:-200px;left:30%;"></div>
+        <span class="eyebrow" style="justify-content:center;">Deploy in minutes</span>
+        <h2>Spin up your trading bot<br />and let it run.</h2>
+        <p>Clone, drop in your Alpaca paper keys, and bring the whole stack online with one command.</p>
+        <div class="term">
+          <div class="term-bar"><i></i><i></i><i></i><span>~/alpacabot — zsh</span></div>
+          <div class="term-body">
+            <code><span class="pr">$</span> git clone alpacabot &amp;&amp; docker-compose up</code>
+            <button class="copy-btn mono" id="copyBtn">copy</button>
+          </div>
+        </div>
+        <div class="cta-actions">
+          <a class="btn btn-primary btn-lg" href="#top">Launch the dashboard <span class="arr">→</span></a>
+          <a class="btn btn-ghost btn-lg" href="#engine">Read the docs</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="footer">
+    <div class="wrap">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <a class="brand" href="#top">
+            <span class="brand-mark"><i></i><span></span></span>
+            <span class="brand-name">Alpaca<b>Bot</b></span>
+          </a>
+          <p>A self-hosted, open trading engine. Backtest, deploy, and automate strategies on the Alpaca API.</p>
+        </div>
+        <div class="footer-cols">
+          <div class="footer-col">
+            <h5>Product</h5>
+            <a href="#engine">Engine</a>
+            <a href="#strategies">Strategies</a>
+            <a href="#charting">Charting</a>
+            <a href="#backtest">Backtesting</a>
+          </div>
+          <div class="footer-col">
+            <h5>Platform</h5>
+            <a href="#stack">Architecture</a>
+            <a href="#stack">Risk Manager</a>
+            <a href="#launch">Deploy</a>
+            <a href="#stack">Docs</a>
+          </div>
+          <div class="footer-col">
+            <h5>Connect</h5>
+            <a href="#top">GitHub</a>
+            <a href="#top">Discord</a>
+            <a href="#top">Telegram</a>
+          </div>
+        </div>
+      </div>
+      <p class="footer-disc">AlpacaBot is self-hosted software for automating trading strategies. It is not investment advice. Trading involves substantial risk of loss — run in sandbox mode and understand each strategy before deploying real capital.</p>
+      <div class="footer-bot">
+        <p>© 2026 AlpacaBot · Built on the Alpaca API</p>
+        <p class="mono">sandbox + production · v1.0</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/app.js"></script>
+</body>
+</html>

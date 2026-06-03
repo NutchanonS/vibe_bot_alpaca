@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import {
   createChart, IChartApi, UTCTimestamp,
-  LineStyle, CrosshairMode,
+  LineStyle, CrosshairMode, TickMarkType,
 } from "lightweight-charts";
 import {
   calcEMA, calcSMA, calcWMA, calcDEMA, calcTEMA, calcHMA, calcVWMA,
@@ -33,6 +33,8 @@ interface Props {
   chartType?: "candlestick" | "line";
   indicatorConfigs?: IndicatorConfig[];
   intraday?: boolean;
+  visiblePeriod?: "1m" | "3m" | "1y";
+  onVisibleBarsChange?: (visibleBars: number) => void;
 }
 
 function toTime(t: string | number) { return t as UTCTimestamp; }
@@ -43,16 +45,49 @@ function toPoints(arr: (number | null)[], times: UTCTimestamp[]) {
     .filter(Boolean) as { time: UTCTimestamp; value: number }[];
 }
 
-const CHART_OPTS = (intraday: boolean) => ({
-  layout: { background: { color: "#0d1117" }, textColor: "#6b7280" },
-  grid: { vertLines: { color: "#1a2332" }, horzLines: { color: "#1a2332" } },
+function parseTickTime(time: number | { year: number; month: number; day: number }): Date {
+  if (typeof time === "number") return new Date(time * 1000);
+  return new Date(Date.UTC(time.year, time.month - 1, time.day));
+}
+
+function formatTickLabel(
+  time: number | { year: number; month: number; day: number },
+  tickMarkType: TickMarkType,
+  visiblePeriod: "1m" | "3m" | "1y",
+  locale: string,
+): string {
+  const date = parseTickTime(time);
+
+  if (tickMarkType === TickMarkType.Time || tickMarkType === TickMarkType.TimeWithSeconds) {
+    return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(date);
+  }
+
+  if (visiblePeriod === "1y") {
+    return new Intl.DateTimeFormat(locale, { month: "short", year: "2-digit" }).format(date);
+  }
+
+  return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(date);
+}
+
+const CHART_OPTS = (intraday: boolean, visiblePeriod: "1m" | "3m" | "1y") => ({
+  layout: { background: { color: "transparent" }, textColor: "#6a6a7d" },
+  grid: {
+    vertLines: { color: "rgba(255,255,255,0.04)" },
+    horzLines: { color: "rgba(255,255,255,0.04)" },
+  },
   crosshair: { mode: CrosshairMode.Normal },
-  rightPriceScale: { borderColor: "#1f2937" },
-  timeScale: { borderColor: "#1f2937", timeVisible: intraday, secondsVisible: false },
+  rightPriceScale: { borderColor: "rgba(255,255,255,0.07)" },
+  timeScale: {
+    borderColor: "rgba(255,255,255,0.07)",
+    timeVisible: intraday,
+    secondsVisible: false,
+    tickMarkFormatter: (time: number | { year: number; month: number; day: number }, tickMarkType: TickMarkType, locale: string) =>
+      formatTickLabel(time, tickMarkType, visiblePeriod, locale),
+  },
 });
 
 export default function PriceChart({
-  bars, symbol, chartType = "candlestick", indicatorConfigs = [], intraday = false,
+  bars, symbol, chartType = "candlestick", indicatorConfigs = [], intraday = false, visiblePeriod = "3m", onVisibleBarsChange,
 }: Props) {
   const mainRef = useRef<HTMLDivElement>(null);
   const oscRef  = useRef<HTMLDivElement>(null);
@@ -67,7 +102,7 @@ export default function PriceChart({
 
     // ── Main chart ───────────────────────────────────────────────────────────
     const chart = createChart(mainRef.current, {
-      ...CHART_OPTS(intraday),
+      ...CHART_OPTS(intraday, visiblePeriod),
       width:  mainRef.current.clientWidth,
       height: mainRef.current.clientHeight || 360,
     });
@@ -78,8 +113,8 @@ export default function PriceChart({
 
     if (chartType === "candlestick") {
       chart.addCandlestickSeries({
-        upColor: "#22c55e", downColor: "#ef4444",
-        borderVisible: false, wickUpColor: "#22c55e", wickDownColor: "#ef4444",
+        upColor: "#2bd576", downColor: "#fb5d6d",
+        borderVisible: false, wickUpColor: "#2bd576", wickDownColor: "#fb5d6d",
       }).setData(bars.map(b => ({ time: toTime(b.time), open: b.open, high: b.high, low: b.low, close: b.close })));
     } else {
       chart.addLineSeries({ color: "#6366f1", lineWidth: 2, priceLineVisible: false })
@@ -158,11 +193,39 @@ export default function PriceChart({
 
     chart.timeScale().fitContent();
 
+    const lastTime = bars[bars.length - 1]?.time;
+    if (lastTime !== undefined) {
+      if (intraday) {
+        const to = Number(lastTime) as UTCTimestamp;
+        const days = visiblePeriod === "1m" ? 30 : visiblePeriod === "3m" ? 90 : 365;
+        chart.timeScale().setVisibleRange({
+          from: (to - days * 86_400) as UTCTimestamp,
+          to,
+        });
+      } else {
+        const toDate = new Date(String(lastTime) + "T00:00:00Z");
+        const fromDate = new Date(toDate.getTime());
+        if (visiblePeriod === "1m") fromDate.setUTCMonth(fromDate.getUTCMonth() - 1);
+        else if (visiblePeriod === "3m") fromDate.setUTCMonth(fromDate.getUTCMonth() - 3);
+        else fromDate.setUTCFullYear(fromDate.getUTCFullYear() - 1);
+        chart.timeScale().setVisibleRange({
+          from: fromDate.toISOString().slice(0, 10) as unknown as UTCTimestamp,
+          to: String(lastTime) as unknown as UTCTimestamp,
+        });
+      }
+    }
+
+    const onMainRangeChange = (range: { from: number; to: number } | null) => {
+      if (!range || !onVisibleBarsChange) return;
+      onVisibleBarsChange(Math.max(0, range.to - range.from));
+    };
+    chart.timeScale().subscribeVisibleLogicalRangeChange(onMainRangeChange);
+
     // ── Oscillator sub-pane ──────────────────────────────────────────────────
     let oscChart: IChartApi | null = null;
     if (oscRef.current && hasOscillators) {
       oscChart = createChart(oscRef.current, {
-        ...CHART_OPTS(intraday),
+        ...CHART_OPTS(intraday, visiblePeriod),
         width:  oscRef.current.clientWidth,
         height: oscRef.current.clientHeight || 120,
         handleScroll: false,
@@ -248,8 +311,13 @@ export default function PriceChart({
     if (mainRef.current) ro.observe(mainRef.current);
     if (oscRef.current) ro.observe(oscRef.current);
 
-    return () => { chart.remove(); oscChart?.remove(); ro.disconnect(); };
-  }, [bars, chartType, depKey, intraday, symbol]);
+    return () => {
+      chart.timeScale().unsubscribeVisibleLogicalRangeChange(onMainRangeChange);
+      chart.remove();
+      oscChart?.remove();
+      ro.disconnect();
+    };
+  }, [bars, chartType, depKey, intraday, symbol, visiblePeriod, onVisibleBarsChange]);
 
   return (
     <div className="flex flex-col w-full h-full">

@@ -181,3 +181,54 @@ Finalize Docker setup and make production-ready:
 Final check: docker-compose up --build from a clean clone should bring up 
 the full stack with no errors. Dashboard accessible at http://localhost.
 ```
+
+
+#==================================promtp from claude design==============================
+Read CLAUDE.md, then study these design-reference files — they are the
+source of truth for a new visual direction:
+  frontend/design-reference/AlpacaBot Homepage.html
+  frontend/design-reference/assets/styles.css
+  frontend/design-reference/assets/app.js
+
+It's a dark, crypto-native + fintech landing page for AlpacaBot (indigo→violet→cyan
+glow, Space Grotesk + JetBrains Mono, real candlestick charts, live ticker,
+interactive strategy tabs, toggleable chart indicators, backtest equity curve).
+
+GOAL: integrate this into the React/TS/Tailwind frontend without breaking the
+existing dashboard.
+
+1. DESIGN TOKENS (additive — do not break current pages):
+   - Extend tailwind.config.js with the reference palette: bg #07070c, panel
+     #101019/#15151f, the indigo/violet/cyan brand ramp, gain #2bd576, loss #fb5d6d,
+     plus the brand gradient. Keep the existing `brand/surface/panel/border` keys working.
+   - Add Space Grotesk + JetBrains Mono via <link> in index.html; set them as
+     `font-display` / `font-mono` in Tailwind. Keep numbers/prices in mono.
+   - Port the glow / grid-bg / reveal utilities into index.css as reusable classes.
+
+2. NEW LANDING PAGE (public route):
+   - Create src/pages/Landing.tsx as a public route at "/", and move the
+     authenticated dashboard to "/app" (update App.tsx routes, RequireAuth, and the
+     Sidebar NavLinks accordingly). "Launch App" / CTAs link to /app (or /login).
+   - Split sections into components under src/components/landing/: Nav, Hero,
+     DashboardPreview, Ticker, EnginePipeline, Strategies (tabbed), ChartingDemo,
+     Backtest, StatBand, FeatureGrid, FinalCTA, Footer. Match the reference 1:1 in
+     layout, copy, and interactions (hover states, tab switching, indicator chip
+     toggles, count-up on scroll, scroll-reveal).
+
+3. CHARTS — reuse the repo's stack instead of the reference's hand-rolled SVG:
+   - Use the existing lightweight-charts setup (see PriceChart.tsx / Strategies.tsx)
+     for the candlestick demos, and the indicator math already in src/lib/indicators.ts
+     (calcEMA, calcSMA, calcVWAP, calcBollinger, etc.). Use Recharts for the backtest
+     equity curve. Seed deterministic demo data so the marketing charts are stable.
+
+4. CONVENTIONS: TypeScript, Tailwind utility classes (not the raw CSS file), clsx for
+   conditional classes, existing file structure. Keep entrance animations transform-only
+   so content stays visible with reduced-motion / when a tab is backgrounded.
+
+DO NOT touch the strategy engine, backend, or trading logic. Frontend only.
+Run `npm run build` (or the dev server) to confirm it compiles and both the landing
+page and the existing dashboard render.
+
+Treat frontend/design-reference/design-tokens.md as the authoritative token
+reference; map those values into tailwind.config.js and index.css before building
+the page.

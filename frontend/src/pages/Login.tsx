@@ -46,7 +46,7 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading || !password}
-            className="w-full py-2 bg-brand hover:bg-brand-dark disabled:opacity-50 rounded-lg text-sm font-semibold transition-colors"
+            className="w-full py-2 btn-brand-grad disabled:opacity-50 rounded-lg text-sm font-semibold"
           >
             {loading ? "Signing in…" : "Sign In"}
           </button>

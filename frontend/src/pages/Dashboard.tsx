@@ -1,7 +1,7 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
-import PriceChart, { IndicatorConfig } from "../components/PriceChart";
+import PriceChart from "../components/PriceChart";
 import AlertBanner from "../components/AlertBanner";
 import SymbolSearch from "../components/SymbolSearch";
 import PortfolioSummary from "../components/PortfolioSummary";
@@ -30,16 +30,15 @@ interface Order {
   created_at: string;
 }
 interface SignalLog { strategy: string; symbol: string; signal: string; time: string; }
-interface ApiIndicatorConfig {
-  type: string; label: string;
-  params: Record<string, number | boolean>;
-  color: string; active: boolean;
-}
-interface ApiIndicatorsMap { [id: string]: ApiIndicatorConfig; }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
-const TIMEFRAMES = ["1D", "1W", "1M", "3M", "1Y"];
+const TIMEFRAMES = ["1m", "3m", "1y"] as const;
+const API_TIMEFRAME_BY_WINDOW: Record<(typeof TIMEFRAMES)[number], "1M" | "3M" | "1Y"> = {
+  "1m": "1M",
+  "3m": "3M",
+  "1y": "1Y",
+};
 
 // ─── Small components ──────────────────────────────────────────────────────────
 
@@ -168,53 +167,11 @@ function OrderForm({ defaultSymbol }: { defaultSymbol: string }) {
 export default function Dashboard() {
   const qc = useQueryClient();
   const [activeSymbol, setActiveSymbol] = useState("SPY");
-  const [timeframe, setTimeframe] = useState("1D");
+  const [timeframe, setTimeframe] = useState<(typeof TIMEFRAMES)[number]>("3m");
   const [signals, setSignals] = useState<SignalLog[]>([]);
   const [watchlist] = useState(["SPY", "AAPL", "TSLA", "NVDA", "QQQ", "MSFT"]);
   const [activeTab, setActiveTab] = useState<"positions" | "orders" | "activity">("positions");
   const [chartType, setChartType] = useState<"candlestick" | "line">("candlestick");
-  // Local active overrides: undefined = use API default, true/false = user override
-  const [activeOverrides, setActiveOverrides] = useState<Record<string, boolean>>({});
-
-  const { data: strategies = {} } = useQuery<Record<string, { type?: string; enabled: boolean; params: Record<string, unknown> }>>({
-    queryKey: ["strategies"],
-    queryFn: () => api.get("/strategies").then((r) => r.data),
-    refetchInterval: 30_000,
-  });
-
-  const { data: apiIndicators = {} as ApiIndicatorsMap } = useQuery<ApiIndicatorsMap>({
-    queryKey: ["indicators"],
-    queryFn: () => api.get("/indicators").then((r) => r.data),
-    refetchInterval: 60_000,
-  });
-
-  // Indicator types auto-enabled by active strategies
-  const strategyForcedTypes = useMemo(() => {
-    const types = new Set<string>();
-    Object.entries(strategies).forEach(([name, cfg]) => {
-      if (!cfg.enabled) return;
-      const type = cfg.type ?? name;
-      if (type === "ema_crossover") { types.add("ema"); types.add("sma"); }
-      if (type === "vwap_breakout") types.add("vwap");
-      if (type === "rsi_mean_reversion" && cfg.params?.use_bollinger) types.add("bollinger");
-    });
-    return types;
-  }, [strategies]);
-
-  function isActive(id: string, cfg: ApiIndicatorConfig): boolean {
-    if (id in activeOverrides) return activeOverrides[id];
-    return cfg.active || strategyForcedTypes.has(cfg.type);
-  }
-
-  function toggleIndicator(id: string, cfg: ApiIndicatorConfig) {
-    setActiveOverrides((prev) => ({ ...prev, [id]: !isActive(id, cfg) }));
-  }
-
-  // Build IndicatorConfig[] for PriceChart
-  const indicatorConfigs: IndicatorConfig[] = Object.entries(apiIndicators).map(([id, cfg]) => ({
-    id, type: cfg.type, label: cfg.label, params: cfg.params, color: cfg.color,
-    active: isActive(id, cfg),
-  }));
 
   const { data: portfolio } = useQuery<Portfolio>({
     queryKey: ["portfolio"],
@@ -222,9 +179,9 @@ export default function Dashboard() {
     refetchInterval: 10_000,
   });
 
-  const { data: chartData } = useQuery({
+  const { data: chartData, isLoading: chartLoading, isError: chartError } = useQuery({
     queryKey: ["chart", activeSymbol, timeframe],
-    queryFn: () => api.get(`/chart/${activeSymbol}?timeframe=${timeframe}`).then((r) => r.data),
+    queryFn: () => api.get(`/chart/${activeSymbol}?timeframe=${API_TIMEFRAME_BY_WINDOW[timeframe]}`).then((r) => r.data),
     refetchInterval: 30_000,
   });
 
@@ -314,7 +271,7 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* Controls: chart type + indicators + timeframe */}
+            {/* Controls: chart type + timeframe */}
             <div className="flex items-center gap-2 ml-auto flex-wrap">
               {/* Chart type */}
               <select
@@ -326,33 +283,6 @@ export default function Dashboard() {
                 <option value="line">Line</option>
               </select>
 
-              {/* Indicator toggles — one button per API indicator */}
-              <div className="flex gap-1 flex-wrap">
-                {Object.entries(apiIndicators).map(([id, cfg]) => {
-                  const disabled = cfg.type === "vwap" && !isIntraday;
-                  const active = isActive(id, cfg);
-                  const fromStrategy = strategyForcedTypes.has(cfg.type);
-                  return (
-                    <button key={id}
-                      onClick={() => !disabled && toggleIndicator(id, cfg)}
-                      title={disabled ? "VWAP only available for intraday (1D, 1W)" : cfg.label}
-                      className={clsx(
-                        "px-2 py-1 rounded text-[11px] font-medium border transition-colors",
-                        disabled && "opacity-30 cursor-not-allowed",
-                        fromStrategy && active && "ring-1 ring-white/30",
-                        active
-                          ? "text-black border-transparent"
-                          : "bg-surface border-border text-gray-400 hover:border-gray-500"
-                      )}
-                      style={active ? { backgroundColor: cfg.color, borderColor: cfg.color } : {}}
-                    >
-                      {cfg.label}{fromStrategy ? " ●" : ""}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Timeframe */}
               <div className="flex gap-1">
                 {TIMEFRAMES.map((tf) => (
                   <button key={tf} onClick={() => setTimeframe(tf)}
@@ -366,14 +296,26 @@ export default function Dashboard() {
           </div>
 
           {/* Chart */}
-          <div className="flex-1 p-3 min-h-0">
-            <PriceChart
-              bars={bars}
-              symbol={activeSymbol}
-              chartType={chartType}
-              indicatorConfigs={indicatorConfigs}
-              intraday={isIntraday}
-            />
+          <div className="flex-1 p-3 min-h-0 relative">
+            {chartLoading && (
+              <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-sm">
+                Loading {activeSymbol}…
+              </div>
+            )}
+            {chartError && (
+              <div className="absolute inset-0 flex items-center justify-center text-loss text-sm">
+                Failed to load chart data — check backend connection.
+              </div>
+            )}
+            {!chartLoading && !chartError && (
+              <PriceChart
+                bars={bars}
+                symbol={activeSymbol}
+                chartType={chartType}
+                intraday={isIntraday}
+                visiblePeriod={timeframe}
+              />
+            )}
           </div>
 
           {/* ── Bottom tabs: Positions / Orders / Activity ── */}
