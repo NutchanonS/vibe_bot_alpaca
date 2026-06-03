@@ -912,6 +912,30 @@ function BacktestTab() {
   }, [trades]);
 
   const firstBar = bars[0], lastBar = bars[bars.length - 1];
+  const windowSub = useMemo(() => {
+    if (!lastBar) return "—";
+
+    if (typeof lastBar.time === "number") {
+      const to = new Date(lastBar.time * 1000);
+      const from = new Date(to.getTime());
+      if (timeframe === "1d") from.setUTCDate(from.getUTCDate() - 1);
+      else if (timeframe === "2w") from.setUTCDate(from.getUTCDate() - 14);
+      else if (timeframe === "1m") from.setUTCMonth(from.getUTCMonth() - 1);
+      else if (timeframe === "3m") from.setUTCMonth(from.getUTCMonth() - 3);
+      else from.setUTCFullYear(from.getUTCFullYear() - 1);
+
+      return `${from.toISOString().slice(0, 16).replace("T", " ")}Z - ${to.toISOString().slice(0, 16).replace("T", " ")}Z`;
+    }
+
+    const to = new Date(`${String(lastBar.time)}T00:00:00Z`);
+    const from = new Date(to.getTime());
+    if (timeframe === "1d") from.setUTCDate(from.getUTCDate() - 1);
+    else if (timeframe === "2w") from.setUTCDate(from.getUTCDate() - 14);
+    else if (timeframe === "1m") from.setUTCMonth(from.getUTCMonth() - 1);
+    else if (timeframe === "3m") from.setUTCMonth(from.getUTCMonth() - 3);
+    else from.setUTCFullYear(from.getUTCFullYear() - 1);
+    return `${from.toISOString().slice(0,10)} - ${String(lastBar.time)}`;
+  }, [lastBar, timeframe]);
 
   return (
     <div className="space-y-4">
@@ -963,15 +987,7 @@ function BacktestTab() {
       {/* ── Stats ── */}
       <div className="grid grid-cols-5 gap-3">
           {[
-            { label: "Window", value: timeframe.toUpperCase(), sub: lastBar ? (() => {
-              const d = new Date(String(lastBar.time) + "T00:00:00Z");
-              if (timeframe === "1d") d.setUTCDate(d.getUTCDate() - 1);
-              else if (timeframe === "2w") d.setUTCDate(d.getUTCDate() - 14);
-              else if (timeframe === "1m") d.setUTCMonth(d.getUTCMonth() - 1);
-              else if (timeframe === "3m") d.setUTCMonth(d.getUTCMonth() - 3);
-              else d.setUTCFullYear(d.getUTCFullYear() - 1);
-              return `${d.toISOString().slice(0,10)} – ${String(lastBar.time)}`;
-            })() : "—" },
+            { label: "Window", value: timeframe.toUpperCase(), sub: windowSub },
           { label: "Last Close", value: lastBar ? fmt.currency(lastBar.close) : "—", sub: `of ${bars.length} bars` },
           { label: "Sim P&L", value: simStats.count > 0 ? fmt.currency(simStats.pnl) : "—", color: simStats.pnl >= 0 ? "text-gain" : "text-loss" },
           { label: "Win Rate", value: simStats.count > 0 ? `${simStats.winRate.toFixed(1)}%` : "—", color: simStats.winRate >= 50 ? "text-gain" : "text-loss" },

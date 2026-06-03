@@ -127,22 +127,40 @@ const HBarTooltip = ({ active, payload, label }: any) => {
 };
 
 const TreemapCell = (props: any) => {
-  const { x, y, width, height, name, pct, pl, plpct, fillColor } = props;
+  const {
+    x,
+    y,
+    width,
+    height,
+    name,
+    pct,
+    pl,
+    plpct,
+    fillColor,
+    payload,
+  } = props;
   if (!width || !height) return null;
-  const textColor = pl >= 0 ? "#4ade80" : "#f87171";
+
+  const safeName = String(name ?? payload?.name ?? "");
+  const safePct = Number.isFinite(Number(pct ?? payload?.pct)) ? Number(pct ?? payload?.pct) : 0;
+  const safePl = Number.isFinite(Number(pl ?? payload?.pl)) ? Number(pl ?? payload?.pl) : 0;
+  const safePlPct = Number.isFinite(Number(plpct ?? payload?.plpct)) ? Number(plpct ?? payload?.plpct) : 0;
+  const safeFill = String(fillColor ?? payload?.fillColor ?? "#6366f1");
+  const textColor = safePl >= 0 ? "#4ade80" : "#f87171";
+
   return (
     <g>
-      <rect x={x} y={y} width={width} height={height} fill={fillColor} fillOpacity={0.13} rx={3} />
-      <rect x={x} y={y} width={width} height={2} fill={fillColor} rx={1} />
+      <rect x={x} y={y} width={width} height={height} fill={safeFill} fillOpacity={0.13} rx={3} />
+      <rect x={x} y={y} width={width} height={2} fill={safeFill} rx={1} />
       {width > 48 && (
         <>
-          <text x={x + 7} y={y + 16} fill="#e5e7eb" fontSize={width > 80 ? 13 : 11} fontWeight="600">{name}</text>
+          <text x={x + 7} y={y + 16} fill="#e5e7eb" fontSize={width > 80 ? 13 : 11} fontWeight="600">{safeName}</text>
           {height > 36 && width > 56 && (
-            <text x={x + 7} y={y + 30} fill="#9ca3af" fontSize={10}>{pct.toFixed(1)}%</text>
+            <text x={x + 7} y={y + 30} fill="#9ca3af" fontSize={10}>{safePct.toFixed(1)}%</text>
           )}
           {height > 50 && width > 68 && (
             <text x={x + 7} y={y + 44} fill={textColor} fontSize={10} fontWeight="600">
-              {plpct >= 0 ? "+" : ""}{plpct.toFixed(1)}%
+              {safePlPct >= 0 ? "+" : ""}{safePlPct.toFixed(1)}%
             </text>
           )}
         </>
