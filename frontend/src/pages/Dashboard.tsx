@@ -32,6 +32,11 @@ interface Order {
 }
 interface SignalLog { strategy: string; symbol: string; signal: string; time: string; }
 interface IndicatorsMap { [id: string]: Omit<IndicatorConfig, "id">; }
+interface NewsArticle {
+  id: number; headline: string; summary: string; source: string;
+  author: string; url: string; symbols: string[]; created_at: string;
+  ago: string; image: string | null;
+}
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
@@ -169,6 +174,87 @@ function IndicatorStrip({ indicators, intraday }: { indicators: IndicatorConfig[
   );
 }
 
+// ─── News Feed ─────────────────────────────────────────────────────────────────
+
+function NewsFeed({ symbol }: { symbol: string }) {
+  const { data, isLoading, isError, refetch } = useQuery<{ news: NewsArticle[]; count: number }>({
+    queryKey: ["news", symbol],
+    queryFn: () => api.get(`/news?symbols=${symbol}&limit=20&hours=48`).then(r => r.data),
+    refetchInterval: 5 * 60_000,
+    staleTime: 2 * 60_000,
+  });
+
+  if (isLoading) return <p className="text-xs text-gray-500 p-3">Loading news for {symbol}…</p>;
+  if (isError)   return <p className="text-xs text-loss p-3">Failed to load news — check Alpaca API connection.</p>;
+
+  const articles = data?.news ?? [];
+
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border/60 sticky top-0 bg-[#0d1117]">
+        <span className="text-[10px] text-gray-500 uppercase tracking-widest">
+          {articles.length} articles · {symbol} · last 48h
+        </span>
+        <button onClick={() => refetch()} className="text-[10px] text-gray-600 hover:text-brand transition-colors">
+          ↻ Refresh
+        </button>
+      </div>
+
+      {articles.length === 0 && (
+        <p className="text-xs text-gray-500 p-4">No recent news for {symbol}.</p>
+      )}
+
+      <div className="divide-y divide-border/40">
+        {articles.map(article => (
+          <a
+            key={article.id}
+            href={article.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex gap-3 px-3 py-2.5 hover:bg-surface/60 transition-colors group"
+          >
+            {/* Thumbnail */}
+            {article.image && (
+              <img
+                src={article.image}
+                alt=""
+                className="w-12 h-12 rounded object-cover flex-shrink-0 opacity-80 group-hover:opacity-100"
+                onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+              />
+            )}
+
+            <div className="min-w-0 flex-1">
+              {/* Headline */}
+              <p className="text-xs font-medium text-gray-200 leading-snug group-hover:text-white line-clamp-2">
+                {article.headline}
+              </p>
+
+              {/* Meta row */}
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <span className="text-[10px] text-brand font-medium">{article.source}</span>
+                <span className="text-[10px] text-gray-600">{article.ago}</span>
+                {article.symbols.slice(0, 4).map(sym => (
+                  <span key={sym} className={clsx(
+                    "text-[9px] px-1 py-0.5 rounded font-mono",
+                    sym === symbol ? "bg-brand/20 text-brand" : "bg-border text-gray-500"
+                  )}>
+                    {sym}
+                  </span>
+                ))}
+              </div>
+
+              {/* Summary snippet */}
+              {article.summary && (
+                <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{article.summary}</p>
+              )}
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Small components ──────────────────────────────────────────────────────────
 
 function Badge({ side }: { side: string }) {
@@ -299,7 +385,7 @@ export default function Dashboard() {
   const [timeframe, setTimeframe] = useState<(typeof TIMEFRAMES)[number]>("3m");
   const [signals, setSignals] = useState<SignalLog[]>([]);
   const [watchlist] = useState(["SPY", "AAPL", "TSLA", "NVDA", "QQQ", "MSFT"]);
-  const [activeTab, setActiveTab] = useState<"positions" | "orders" | "activity">("positions");
+  const [activeTab, setActiveTab] = useState<"positions" | "orders" | "activity" | "news">("positions");
   const [chartType, setChartType] = useState<"candlestick" | "line">("candlestick");
 
   const { data: portfolio } = useQuery<Portfolio>({
@@ -463,19 +549,30 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* ── Bottom tabs: Positions / Orders / Activity ── */}
+          {/* ── Bottom tabs: Positions / Orders / Activity / News ── */}
           <div className="border-t border-border flex-shrink-0" style={{ maxHeight: "240px" }}>
             <div className="flex border-b border-border">
-              {(["positions", "orders", "activity"] as const).map((tab) => (
-                <button key={tab} onClick={() => setActiveTab(tab)}
-                  className={clsx("px-4 py-2 text-xs font-medium capitalize transition-colors",
-                    activeTab === tab ? "border-b-2 border-brand text-white" : "text-gray-500 hover:text-gray-300")}>
-                  {tab}
-                  {tab === "positions" && portfolio?.positions.length
-                    ? ` (${portfolio.positions.length})` : ""}
-                  {tab === "orders" && orders.length ? ` (${orders.length})` : ""}
-                </button>
-              ))}
+              <button onClick={() => setActiveTab("positions")}
+                className={clsx("px-4 py-2 text-xs font-medium transition-colors",
+                  activeTab === "positions" ? "border-b-2 border-brand text-white" : "text-gray-500 hover:text-gray-300")}>
+                Positions{portfolio?.positions.length ? ` (${portfolio.positions.length})` : ""}
+              </button>
+              <button onClick={() => setActiveTab("orders")}
+                className={clsx("px-4 py-2 text-xs font-medium transition-colors",
+                  activeTab === "orders" ? "border-b-2 border-brand text-white" : "text-gray-500 hover:text-gray-300")}>
+                Orders{orders.length ? ` (${orders.length})` : ""}
+              </button>
+              <button onClick={() => setActiveTab("activity")}
+                className={clsx("px-4 py-2 text-xs font-medium transition-colors",
+                  activeTab === "activity" ? "border-b-2 border-brand text-white" : "text-gray-500 hover:text-gray-300")}>
+                Activity
+              </button>
+              <button onClick={() => setActiveTab("news")}
+                className={clsx("px-4 py-2 text-xs font-medium transition-colors flex items-center gap-1",
+                  activeTab === "news" ? "border-b-2 border-brand text-white" : "text-gray-500 hover:text-gray-300")}>
+                News
+                <span className="text-[9px] bg-brand/30 text-brand px-1 py-0.5 rounded leading-none">live</span>
+              </button>
             </div>
 
             <div className="overflow-auto" style={{ maxHeight: "196px" }}>
@@ -554,6 +651,8 @@ export default function Dashboard() {
                   ))}
                 </div>
               )}
+
+              {activeTab === "news" && <NewsFeed symbol={activeSymbol} />}
             </div>
           </div>
         </div>

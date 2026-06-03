@@ -7,31 +7,45 @@ Reference: https://medium.com/predict/building-an-agentic-ai-trading-system-from
 ```
 CURRENT                          AGENTIC UPGRADE
 ──────────────────────────────────────────────────────────────
-alpaca_client.py          →  Agent 1: MarketDataFetcher
-(no validation)           →  Agent 2: DataQA + CircuitBreaker
-rsi/ema/vwap strategies   →  Agent 3: SignalSelection (LLM)
-risk_manager.py           →  Agent 4: RiskCapitalAllocation (LLM)
-(none)                    →  Agent 5: PolicySelfCritic (LLM)
-order_manager.py          →  Agent 6: ExecutionAgent (deterministic)
-(none)                    →  Agent 7: PositionManager (LLM)
+alpaca_client.py          →  Agent 1:  MarketDataFetcher
+(no news)                 →  Agent 1b: NewsFetcher          ← NEW (parallel with 1)
+(no validation)           →  Agent 2:  DataQA + CircuitBreaker
+(no news analysis)        →  Agent 2b: NewsAnalysis (LLM)  ← NEW (parallel with 2)
+rsi/ema/vwap strategies   →  Agent 3:  SignalSelection (LLM + news sentiment)
+risk_manager.py           →  Agent 4:  RiskCapitalAllocation (LLM)
+(none)                    →  Agent 5:  PolicySelfCritic (LLM)
+order_manager.py          →  Agent 6:  ExecutionAgent (deterministic)
+(none)                    →  Agent 7:  PositionManager (LLM)
 (none)                    →  LangGraph: orchestrator loop
-backend/routes/           →  New: /api/agent/status + /api/agent/run
-frontend/                 →  New: AgentLog panel in Dashboard
+backend/routes/           →  New: /api/agent/status + /api/agent/run + /api/news
+frontend/                 →  New: News tab in Dashboard + AgentLog panel
+```
+
+### Data flow with news:
+
+```
+  ┌─ Agent 1: MarketDataFetcher ─┐
+  │                               ├─→ Agent 2: DataQA ─→ Agent 3: SignalSelection ─→ ...
+  └─ Agent 1b: NewsFetcher ───────┘        ↑
+                                    Agent 2b: NewsAnalysis (LLM)
+                                    feeds sentiment into SignalSelection
 ```
 
 ## Recommended Build Order Summary
 
 | Step | Agent | LLM? | Complexity | Builds On |
 |------|-------|-------|------------|-----------|
-| 1 | MarketDataFetcher | No | Low | alpaca_client |
-| 2 | DataQA + CircuitBreaker | No | Low | Step 1 |
-| 3 | SignalSelection | Yes (Claude) | Medium | Steps 1-2 + strategies/ |
-| 4 | RiskCapital | Yes (Claude) | Medium | Steps 1-3 + risk_manager |
-| 5 | PolicySelfCritic | Yes (Claude) | Medium | Steps 1-4 |
-| 6 | Execution | No | Low | Steps 1-5 + order_manager |
-| 7 | PositionManager | Yes (Claude) | High | Steps 1-6 + DB |
-| 8 | LangGraph Orchestrator | No | High | All agents |
-| 9 | Frontend Panel | No | Low | Step 8 |
+| 1    | MarketDataFetcher            | No           | Low    | alpaca_client |
+| 1b   | NewsFetcher                  | No           | Low    | Alpaca News API (same keys) |
+| 2    | DataQA + CircuitBreaker      | No           | Low    | Step 1 |
+| 2b   | NewsAnalysis                 | Yes (OpenAI gpt-4o-mini) | Medium | Step 1b + Step 2 |
+| 3    | SignalSelection               | Yes (OpenAI gpt-4o-mini) | Medium | Steps 1-2, 2b + strategies/ |
+| 4    | RiskCapital                  | Yes (OpenAI gpt-4o-mini) | Medium | Steps 1-3 + risk_manager |
+| 5    | PolicySelfCritic             | Yes (OpenAI gpt-4o-mini) | Medium | Steps 1-4 |
+| 6    | Execution                    | No                       | Low    | Steps 1-5 + order_manager |
+| 7    | PositionManager              | Yes (OpenAI gpt-4o-mini) | High   | Steps 1-6 + DB |
+| 8    | LangGraph Orchestrator       | No           | High   | All agents |
+| 9    | Frontend Agent + News Panel  | No           | Low    | Steps 8 + 1b |
 
 ---
 
@@ -109,9 +123,145 @@ No LLM calls. Add tests at strategy/tests/test_data_qa_agent.py.
 
 ---
 
+## Step 1b — News Fetcher Agent
+
+**Build alongside Step 1/2 because:** no LLM, uses the same Alpaca API keys already configured, runs in parallel with market data fetching. News adds context that improves SignalSelection in Step 3.
+
+```
+I'm building a LangGraph multi-agent trading system.
+This is Step 1b: the NewsFetcher agent (no LLM, parallel with MarketDataFetcher).
+
+Context:
+- strategy/agents/base_agent.py exists (BaseAgent ABC with run(state) -> dict)
+- strategy/config.py has settings.api_key and settings.secret_key
+- Alpaca News API: GET https://data.alpaca.markets/v1beta1/news
+  Params: symbols (comma-separated), start (ISO8601), limit, sort=desc
+  Auth: same APCA-API-KEY-ID / APCA-API-SECRET-KEY headers
+  Response: { "news": [{ id, headline, summary, source, author, url, symbols, created_at }] }
+
+Task:
+Create strategy/agents/news_fetcher_agent.py
+
+Define these dataclasses:
+  NewsArticle:
+    id: int
+    headline: str
+    summary: str
+    source: str
+    author: str
+    url: str
+    symbols: list[str]
+    created_at: datetime
+    sentiment: float | None  # filled later by NewsAnalysisAgent
+
+  NewsSnapshot:
+    symbol: str
+    articles: list[NewsArticle]
+    fetched_at: datetime
+
+The NewsFetcherAgent must:
+1. Accept symbols from state["symbols"]
+2. Fetch articles from Alpaca News API using requests
+   - lookback_hours param (default 24h), limit_per_symbol (default 10)
+   - batch all symbols in one request (symbols=AAPL,SPY,...)
+3. Group returned articles by symbol (one article can match multiple symbols)
+4. Return state with "news_snapshots": list[NewsSnapshot]
+5. On API failure: return empty snapshots, log error, DO NOT raise
+
+Also add /api/news to backend/src/routes/news.js (Node.js):
+  GET /api/news?symbols=AAPL,SPY&limit=20&hours=24
+  Proxies Alpaca v1beta1/news with same auth pattern as chart.js.
+  Register in backend/src/index.js.
+
+Add a News tab to the Dashboard.tsx bottom tab bar (4th tab):
+  - Fetch GET /api/news?symbols=<activeSymbol>&limit=20
+  - Show list: headline | source | symbols | relative time (e.g. "2h ago")
+  - Clicking headline opens url in new tab
+  - Auto-refresh every 5 minutes
+  - Show sentiment badge (Bullish/Bearish/Neutral) when available from NewsAnalysisAgent
+
+Add tests at strategy/tests/test_news_fetcher_agent.py using mock responses.
+```
+
+---
+
+## Step 2b — News Analysis Agent (LLM)
+
+**Build after Step 1b and Step 2 because:** needs QA-approved symbols to know which news is trustworthy, and uses OpenAI to produce structured sentiment that feeds into SignalSelection.
+
+```
+I'm building a LangGraph multi-agent trading system.
+This is Step 2b: the NewsAnalysis agent — LLM-powered sentiment extraction.
+
+Context:
+- strategy/agents/news_fetcher_agent.py exists (NewsSnapshot, NewsArticle)
+- strategy/agents/data_qa_agent.py exists (QAResult with approved_symbols)
+- strategy/config.py has settings.openai_api_key (loaded from OPENAI_API_KEY in .env)
+- Add openai>=1.56.0 to requirements.txt if not already present
+- Model: gpt-4o-mini  (fast, cheap, supports structured outputs)
+
+OpenAI structured output pattern (use this, not function calling):
+  from openai import OpenAI
+  from pydantic import BaseModel
+
+  client = OpenAI(api_key=settings.openai_api_key)
+  result = client.beta.chat.completions.parse(
+      model="gpt-4o-mini",
+      messages=[{"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user",   "content": user_prompt}],
+      response_format=NewsSentiment,  # Pydantic model
+  )
+  sentiment = result.choices[0].message.parsed
+
+Note: OpenAI automatically caches repeated system prompt prefixes (no explicit
+cache_control needed). Keep the system prompt constant across calls for the same
+agent so OpenAI's automatic caching applies.
+
+Task:
+Create strategy/agents/news_analysis_agent.py
+
+Define as a Pydantic BaseModel (required for structured output):
+  class NewsSentiment(BaseModel):
+    symbol: str
+    overall_sentiment: float      # -1.0 (very bearish) to +1.0 (very bullish)
+    confidence: float             # 0.0 to 1.0
+    key_themes: list[str]         # e.g. ["earnings beat", "guidance raised"]
+    risk_events: list[str]        # e.g. ["SEC investigation", "product recall"]
+    bullish_reasons: list[str]
+    bearish_reasons: list[str]
+    articles_analyzed: int
+    summary: str                  # 1-2 sentence human-readable summary
+
+The NewsAnalysisAgent must:
+1. Accept state["news_snapshots"] and state["qa_result"].approved_symbols
+2. Skip symbols with zero articles (return sentiment=0.0, confidence=0.0)
+3. Only analyze symbols in approved_symbols (skip blocked ones)
+4. For each symbol with articles, build:
+   - SYSTEM_PROMPT (constant — same every call so OpenAI caches it):
+     "You are a financial news analyst. Extract sentiment signals from news
+      headlines and summaries. Be precise and conservative."
+   - user_prompt: headlines + summaries (truncated to 200 chars each, max 5 articles)
+5. Call gpt-4o-mini using client.beta.chat.completions.parse()
+   with response_format=NewsSentiment
+6. Return state with "news_sentiments": dict[str, NewsSentiment]
+
+IMPORTANT: If OpenAI fails or times out for a symbol, return neutral sentiment
+(overall_sentiment=0.0, confidence=0.0) and log the error. Never block the pipeline.
+
+Update Step 3 (SignalSelection) to also receive news_sentiments:
+  - Add to the prompt: "News sentiment for {symbol}: {sentiment.overall_sentiment:+.2f}
+    (confidence {sentiment.confidence:.0%}). Themes: {themes}. Risks: {risks}."
+  - If sentiment.overall_sentiment < -0.5 and confidence > 0.7: add to conflicting_signals
+  - If sentiment.overall_sentiment > 0.5 and confidence > 0.7: add to supporting_signals
+
+Add tests mocking the OpenAI response.
+```
+
+---
+
 ## Step 3 — Signal Selection Agent (First LLM Agent)
 
-**Build third because:** this is the first Claude/GPT call. Builds on existing strategy signals as "evidence" for the LLM to reason over.
+**Build third because:** first OpenAI call. Builds on existing rule-based strategy signals as "evidence" for the LLM to reason over. Also receives news sentiment from Step 2b.
 
 ```
 I'm building a LangGraph multi-agent trading system.
@@ -121,32 +271,51 @@ Context:
 - strategy/agents/base_agent.py, market_data_agent.py, data_qa_agent.py exist
 - strategy/strategies/ has RSI, EMA, VWAP rule-based strategies
 - strategy/indicators/ has RSI, EMA, VWAP, Bollinger implementations
-- Add anthropic SDK to requirements.txt (use claude-sonnet-4-6)
+- strategy/config.py has settings.openai_api_key (from OPENAI_API_KEY in .env)
+- openai>=1.56.0 is in requirements.txt
+- Model: gpt-4o-mini
+
+OpenAI structured output pattern:
+  from openai import OpenAI
+  from pydantic import BaseModel
+  from typing import Literal
+
+  client = OpenAI(api_key=settings.openai_api_key)
+  result = client.beta.chat.completions.parse(
+      model="gpt-4o-mini",
+      messages=[{"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user",   "content": user_prompt}],
+      response_format=SignalSelectionResult,
+  )
+  output = result.choices[0].message.parsed
+
+Note: keep SYSTEM_PROMPT constant so OpenAI's automatic caching applies.
 
 Task:
 Create strategy/agents/signal_selection_agent.py
 
+Output schema (Pydantic BaseModel):
+  class SignalSelectionResult(BaseModel):
+    symbol: str
+    direction: Literal["BUY", "SELL", "NO_TRADE"]
+    confidence: float             # 0.0-1.0
+    reasoning: str                # 2-3 sentences max
+    supporting_signals: list[str] # which strategies agreed
+    conflicting_signals: list[str]# which strategies disagreed
+
 The agent must:
-1. Accept a list of approved MarketSnapshot objects (from QA agent)
+1. Accept approved MarketSnapshot objects (from QA agent) + news_sentiments (from step 2b)
 2. For each symbol, run ALL existing rule-based strategies
    (RSI, EMA, VWAP) to get their Signal objects — use these as EVIDENCE
-3. Build a structured prompt that includes:
+3. Build user prompt including:
    - Current price, RSI value, EMA(9) vs EMA(21), VWAP relationship
    - All strategy signals with their strength scores
    - 5-bar price momentum summary
-4. Call Claude claude-sonnet-4-6 with tool_use structured output.
-   The output schema (use Pydantic):
-     symbol: str
-     direction: Literal["BUY", "SELL", "NO_TRADE"]
-     confidence: float  # 0.0-1.0
-     reasoning: str     # 2-3 sentences max
-     supporting_signals: list[str]  # which strategies agreed
-     conflicting_signals: list[str] # which strategies disagreed
-5. IMPORTANT: Agent must output NO_TRADE if confidence < 0.65
-6. Enable prompt caching on the system prompt (use cache_control)
+   - News sentiment if available: "Sentiment: {overall_sentiment:+.2f} ({confidence:.0%} confidence)"
+4. Call gpt-4o-mini with response_format=SignalSelectionResult
+5. IMPORTANT: Force direction="NO_TRADE" if confidence < 0.65 (override LLM if needed)
 
-Store API key via ANTHROPIC_API_KEY in .env and strategy/config.py.
-Add tests mocking the Claude response.
+Add tests mocking the OpenAI response.
 ```
 
 ---
@@ -174,10 +343,11 @@ The agent must:
    - If already holding symbol, max add = 2% of equity
    - If total open positions >= 5, reject new BUY signals
    - Max single-trade risk = 1.5% of equity (stop-loss distance check)
-3. If passes hard rules, call Claude claude-sonnet-4-6 to reason about:
+3. If passes hard rules, call gpt-4o-mini (OpenAI) to reason about:
    - Suggested position size given confidence score and volatility (use ATR from bars)
    - Whether current market conditions warrant reduced sizing
    - Stop-loss price and profit target price
+   Use client.beta.chat.completions.parse() with a Pydantic RiskAllocation model.
 4. Return RiskAllocation dataclass:
      approved: bool
      symbol: str
@@ -191,8 +361,8 @@ The agent must:
 
 Hard rules MUST override LLM output — if LLM suggests 10 shares
 but hard rule caps at 5, output 5.
-Use prompt caching for system prompt.
-Add tests.
+Keep system prompt constant — OpenAI caches repeated prefixes automatically.
+Add tests mocking the OpenAI response.
 ```
 
 ---
@@ -215,9 +385,10 @@ Create strategy/agents/policy_critic_agent.py
 The agent must:
 1. Accept the full pipeline state:
    MarketSnapshot + QAResult + SignalSelectionResult + RiskAllocation
-2. Call Claude claude-sonnet-4-6 with a DIFFERENT system prompt than the
-   Signal agent — this agent's persona is a risk-averse compliance officer
-   whose job is to find reasons NOT to trade.
+2. Call gpt-4o-mini with a DIFFERENT system prompt than the Signal agent —
+   this agent's persona is a risk-averse compliance officer whose job is to
+   find reasons NOT to trade.
+   Use client.beta.chat.completions.parse() with a Pydantic PolicyReview model.
 3. The prompt must explicitly instruct the LLM to:
    - Look for contradictions between agents' outputs
    - Check if confidence + risk_pct combination is acceptable
@@ -232,9 +403,9 @@ The agent must:
 5. If vetoed, the orchestrator SKIPS execution for that symbol this cycle.
    Log the veto reason to DB via a new endpoint POST /api/agent/veto
 
-Use prompt caching. The system prompt for this agent should be separated
-from the signal agent's system prompt (different cache block).
-Add tests.
+Keep system prompt constant and different from the signal agent's system
+prompt — OpenAI caches them independently as separate prefix entries.
+Add tests mocking the OpenAI response.
 ```
 
 ---
@@ -302,8 +473,9 @@ The agent must:
 1. Run EVERY cycle, independent of new signal flow
 2. Fetch all open positions from Alpaca
 3. For each position, fetch the original entry thesis from agent_cycles table
-4. Call Claude claude-sonnet-4-6 and ask: given the ORIGINAL reasoning
+4. Call gpt-4o-mini and ask: given the ORIGINAL reasoning
    and CURRENT price/indicators, should we:
+   Use client.beta.chat.completions.parse() with a Pydantic PositionDecision model.
    - HOLD (thesis intact)
    - EXIT (thesis broken, price action contradicts entry reasoning)
    - TRAIL_STOP (move stop-loss up to lock in gains)
@@ -314,9 +486,9 @@ The agent must:
 7. Return list[PositionDecision]:
      symbol, action, new_stop_price, exit_reason, reasoning
 
-Use prompt caching. The original entry thesis is the dynamic part of the
-prompt; the system instructions are the cached part.
-Add tests.
+Keep system instructions constant (OpenAI caches automatically); the original
+entry thesis goes in the user message as the dynamic part each call.
+Add tests mocking the OpenAI response.
 ```
 
 ---

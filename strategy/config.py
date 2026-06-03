@@ -28,6 +28,8 @@ class Config:
     max_position_size_pct: float
     max_drawdown_pct: float
 
+    openai_api_key: str
+
     telegram_bot_token: str
     telegram_chat_id: str
     discord_webhook_url: str
@@ -72,6 +74,7 @@ def load_config() -> Config:
         default_strategies=[s.strip() for s in strategies_raw.split(",") if s.strip()],
         max_position_size_pct=float(os.getenv("MAX_POSITION_SIZE_PCT", "5")),
         max_drawdown_pct=float(os.getenv("MAX_DRAWDOWN_PCT", "10")),
+        openai_api_key=os.getenv("OPENAI_API_KEY", ""),
         telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
         telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID", ""),
         discord_webhook_url=os.getenv("DISCORD_WEBHOOK_URL", ""),
