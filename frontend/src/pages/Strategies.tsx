@@ -32,6 +32,7 @@ interface IndicatorConfig {
   color: string; active: boolean;
 }
 interface IndicatorsMap { [id: string]: IndicatorConfig; }
+interface ChartIndicatorConfig extends IndicatorConfig { id: string; }
 interface IndicatorType {
   label: string; desc?: string; defaultParams: Record<string, number | boolean>;
   intradayOnly?: boolean; subPane?: boolean;
@@ -894,6 +895,91 @@ const STRAT_SHORT: Record<string, string> = {
   vwap_breakout:      "VWAP Breakout",
 };
 
+const BT_DEFAULT_PARAMS: Record<string, Record<string, number | boolean>> = {
+  rsi_mean_reversion: { rsi_period: 14 },
+  ema_crossover:      { fast_period: 9, slow_period: 21 },
+  vwap_breakout:      {},
+};
+
+function asNum(v: number | boolean | undefined, fallback: number): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+}
+
+function pickIndicator(
+  indicators: ChartIndicatorConfig[],
+  type: string,
+  match?: (cfg: ChartIndicatorConfig) => boolean,
+): ChartIndicatorConfig | undefined {
+  return indicators.find(cfg => cfg.type === type && (!match || match(cfg)))
+    ?? indicators.find(cfg => cfg.type === type);
+}
+
+function buildBacktestIndicators(
+  activeStrategies: string[],
+  symbolBt: BtSymbolData | undefined,
+  indicatorsMap: IndicatorsMap,
+): ChartIndicatorConfig[] {
+  const available = Object.entries(indicatorsMap).map(([id, cfg]) => ({ id, ...cfg }));
+  const items: ChartIndicatorConfig[] = [];
+  const add = (cfg: ChartIndicatorConfig) => {
+    if (!items.some(x => x.id === cfg.id)) items.push(cfg);
+  };
+
+  for (const strat of activeStrategies) {
+    const params = { ...(BT_DEFAULT_PARAMS[strat] ?? {}), ...(symbolBt?.results[strat]?.params ?? {}) };
+
+    if (strat === "rsi_mean_reversion") {
+      const period = asNum(params.rsi_period, 14);
+      const existing = pickIndicator(available, "rsi", cfg => asNum(cfg.params.period, -1) === period);
+      add({
+        id: existing?.id ?? `bt_rsi_${period}`,
+        type: "rsi",
+        label: existing?.label ?? `RSI ${period}`,
+        params: { period },
+        color: existing?.color ?? "#f59e0b",
+        active: true,
+      });
+    }
+
+    if (strat === "ema_crossover") {
+      const fast = asNum(params.fast_period, 9);
+      const slow = asNum(params.slow_period, 21);
+      const fastCfg = pickIndicator(available, "ema", cfg => asNum(cfg.params.period, -1) === fast);
+      const slowCfg = pickIndicator(available, "ema", cfg => asNum(cfg.params.period, -1) === slow && cfg.id !== fastCfg?.id);
+      add({
+        id: fastCfg?.id ?? `bt_ema_${fast}`,
+        type: "ema",
+        label: fastCfg?.label ?? `EMA ${fast}`,
+        params: { period: fast },
+        color: fastCfg?.color ?? "#f59e0b",
+        active: true,
+      });
+      add({
+        id: slowCfg?.id ?? `bt_ema_${slow}`,
+        type: "ema",
+        label: slowCfg?.label ?? `EMA ${slow}`,
+        params: { period: slow },
+        color: slowCfg?.color ?? "#a78bfa",
+        active: true,
+      });
+    }
+
+    if (strat === "vwap_breakout") {
+      const existing = pickIndicator(available, "vwap");
+      add({
+        id: existing?.id ?? "bt_vwap",
+        type: "vwap",
+        label: existing?.label ?? "VWAP",
+        params: {},
+        color: existing?.color ?? "#22d3ee",
+        active: true,
+      });
+    }
+  }
+
+  return items;
+}
+
 function pnlPctColor(v: number): string {
   return v > 0 ? "text-gain" : v < 0 ? "text-loss" : "text-gray-400";
 }
@@ -909,6 +995,7 @@ function BacktestTab() {
   const [timeframe, setTimeframe] = useState<"1m"|"3m"|"6m"|"1y">("3m");
   const [chartType, setChartType] = useState<"candlestick" | "line">("candlestick");
   const [mode, setMode] = useState<"simulated"|"live">("simulated");
+  const [hiddenIndicatorIds, setHiddenIndicatorIds] = useState<string[]>([]);
 
   // Chart data (daily bars for the selected symbol)
   const { data: chartData, isLoading: chartLoading } = useQuery({
@@ -925,8 +1012,6 @@ function BacktestTab() {
     queryFn: () => api.get("/indicators").then(r => r.data),
     staleTime: 30_000,
   });
-  const indicatorConfigs = Object.entries(indicatorsMap).map(([id, cfg]) => ({ id, ...cfg }));
-
   // Simulated backtest: all watchlist symbols × all strategies
   const { data: btData, isLoading: btLoading } = useQuery<BtResponse>({
     queryKey: ["backtest", COMPARE_SYMS.join(","), stratFilter, timeframe],
@@ -946,9 +1031,24 @@ function BacktestTab() {
   const activeStrategies = stratFilter === "all"
     ? ["rsi_mean_reversion", "ema_crossover", "vwap_breakout"]
     : [stratFilter];
+  const activeStrategiesKey = activeStrategies.join(",");
 
   // The selected symbol's backtest data
   const symbolBt = btData?.data[symbol];
+
+  const strategyIndicators = useMemo(
+    () => buildBacktestIndicators(activeStrategies, symbolBt, indicatorsMap),
+    [activeStrategiesKey, symbolBt, indicatorsMap]
+  );
+
+  useEffect(() => {
+    setHiddenIndicatorIds([]);
+  }, [symbol, stratFilter, mode]);
+
+  const chartIndicators = useMemo(
+    () => strategyIndicators.map(cfg => ({ ...cfg, active: !hiddenIndicatorIds.includes(cfg.id) })),
+    [strategyIndicators, hiddenIndicatorIds]
+  );
 
   // Trade markers: buy=entry, sell=exit for each simulated trade
   const tradeMarkers = useMemo(() => {
@@ -963,7 +1063,7 @@ function BacktestTab() {
       });
     }
     return markers;
-  }, [symbolBt, mode, activeStrategies.join(",")]);
+  }, [symbolBt, mode, activeStrategiesKey]);
 
   // Cumulative P&L curve (merged by date) for recharts
   const pnlCurve = useMemo(() => {
@@ -983,7 +1083,7 @@ function BacktestTab() {
       });
       return row;
     });
-  }, [symbolBt, activeStrategies.join(",")]);
+  }, [symbolBt, activeStrategiesKey]);
 
   // Live trades derived stats
   const liveTrades = useMemo(
@@ -1153,12 +1253,25 @@ function BacktestTab() {
                   <div className="flex items-center gap-3 text-[10px] text-gray-500">
                     <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-gain" /> Buy signal</span>
                     <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-loss" /> Sell signal</span>
-                    {indicatorConfigs.filter(c => c.active).slice(0, 3).map(c => (
-                      <span key={c.id} className="flex items-center gap-1">
-                        <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
-                        {c.label}
-                      </span>
-                    ))}
+                    {strategyIndicators.map(c => {
+                      const hidden = hiddenIndicatorIds.includes(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => setHiddenIndicatorIds(ids => hidden ? ids.filter(id => id !== c.id) : [...ids, c.id])}
+                          className={clsx(
+                            "inline-flex items-center gap-1 px-1.5 py-0.5 rounded border transition-colors",
+                            hidden
+                              ? "border-border text-gray-600 hover:text-gray-400"
+                              : "border-border/70 text-gray-300 hover:text-white"
+                          )}
+                        >
+                          <span className={clsx("inline-block w-2 h-2 rounded-full", hidden && "opacity-40")} style={{ backgroundColor: c.color }} />
+                          <span className={clsx(hidden && "line-through")}>{c.label}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 {chartLoading ? (
@@ -1169,7 +1282,7 @@ function BacktestTab() {
                   <div style={{ height: 400 }}>
                     <PriceChart bars={bars} symbol={symbol} chartType={chartType} intraday={isIntraday}
                       visiblePeriod={BT_VIS_PERIOD[timeframe]}
-                      indicatorConfigs={indicatorConfigs}
+                      indicatorConfigs={chartIndicators}
                       tradeMarkers={tradeMarkers} />
                   </div>
                 )}
@@ -1298,7 +1411,7 @@ function BacktestTab() {
             ) : (
               <div style={{ height: 400 }}>
                 <PriceChart bars={bars} symbol={symbol} chartType={chartType} intraday={isIntraday}
-                  visiblePeriod={BT_VIS_PERIOD[timeframe]} indicatorConfigs={indicatorConfigs} />
+                  visiblePeriod={BT_VIS_PERIOD[timeframe]} indicatorConfigs={chartIndicators} />
               </div>
             )}
           </div>
