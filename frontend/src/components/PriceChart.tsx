@@ -22,6 +22,12 @@ export interface IndicatorConfig {
   active: boolean;
 }
 
+export interface TradeMarker {
+  time: string | number;
+  side: "buy" | "sell";
+  strategy?: string;
+}
+
 const OSCILLATOR_TYPES = new Set([
   "rsi","macd","stoch","cci","williams","roc","momentum","zscore","aroon",
   "obv","mfi","cmf","atr","adx","stddev",
@@ -32,6 +38,7 @@ interface Props {
   symbol: string;
   chartType?: "candlestick" | "line";
   indicatorConfigs?: IndicatorConfig[];
+  tradeMarkers?: TradeMarker[];
   intraday?: boolean;
   visiblePeriod?: "1d" | "2w" | "1m" | "3m" | "1y";
   onVisibleBarsChange?: (visibleBars: number) => void;
@@ -70,15 +77,12 @@ function formatTickLabel(
   locale: string,
 ): string {
   const date = parseTickTime(time);
-
   if (tickMarkType === TickMarkType.Time || tickMarkType === TickMarkType.TimeWithSeconds) {
     return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(date);
   }
-
   if (visiblePeriod === "1y") {
     return new Intl.DateTimeFormat(locale, { month: "short", year: "2-digit" }).format(date);
   }
-
   return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(date);
 }
 
@@ -100,7 +104,8 @@ const CHART_OPTS = (intraday: boolean, visiblePeriod: "1d" | "2w" | "1m" | "3m" 
 });
 
 export default function PriceChart({
-  bars, symbol, chartType = "candlestick", indicatorConfigs = [], intraday = false, visiblePeriod = "3m", onVisibleBarsChange,
+  bars, symbol, chartType = "candlestick", indicatorConfigs = [], tradeMarkers = [],
+  intraday = false, visiblePeriod = "3m", onVisibleBarsChange,
 }: Props) {
   const mainRef = useRef<HTMLDivElement>(null);
   const oscRef  = useRef<HTMLDivElement>(null);
@@ -109,6 +114,7 @@ export default function PriceChart({
   const activeConfigs = indicatorConfigs.filter(c => c.active);
   const hasOscillators = activeConfigs.some(c => OSCILLATOR_TYPES.has(c.type));
   const depKey = activeConfigs.map(c => `${c.id}:${c.type}:${c.color}:${JSON.stringify(c.params)}`).join("|");
+  const markersKey = tradeMarkers.map(m => `${m.time}:${m.side}`).join("|");
 
   useEffect(() => {
     if (!mainRef.current || bars.length === 0) return;
@@ -124,14 +130,39 @@ export default function PriceChart({
     const closes = bars.map(b => b.close);
     const times  = bars.map(b => toChartTime(b.time, intraday));
 
+    let mainSeries: ReturnType<typeof chart.addCandlestickSeries> | ReturnType<typeof chart.addLineSeries>;
+
     if (chartType === "candlestick") {
-      chart.addCandlestickSeries({
+      mainSeries = chart.addCandlestickSeries({
         upColor: "#2bd576", downColor: "#fb5d6d",
         borderVisible: false, wickUpColor: "#2bd576", wickDownColor: "#fb5d6d",
-      }).setData(bars.map(b => ({ time: toChartTime(b.time, intraday), open: b.open, high: b.high, low: b.low, close: b.close })));
+      });
+      mainSeries.setData(bars.map(b => ({ time: toChartTime(b.time, intraday), open: b.open, high: b.high, low: b.low, close: b.close })));
     } else {
-      chart.addLineSeries({ color: "#6366f1", lineWidth: 2, priceLineVisible: false })
-           .setData(bars.map(b => ({ time: toChartTime(b.time, intraday), value: b.close })));
+      mainSeries = chart.addLineSeries({ color: "#6366f1", lineWidth: 2, priceLineVisible: false });
+      mainSeries.setData(bars.map(b => ({ time: toChartTime(b.time, intraday), value: b.close })));
+    }
+
+    // ── Trade markers ────────────────────────────────────────────────────────
+    if (tradeMarkers.length > 0) {
+      try {
+        const barTimeSet = new Set(bars.map(b => String(b.time)));
+        const markers = tradeMarkers
+          .filter(m => barTimeSet.has(String(m.time)))
+          .sort((a, b) => String(a.time).localeCompare(String(b.time)))
+          .map(m => ({
+            time: toChartTime(m.time, intraday),
+            position: (m.side === "buy" ? "belowBar" : "aboveBar") as "belowBar" | "aboveBar",
+            color: m.side === "buy" ? "#22c55e" : "#ef4444",
+            shape: (m.side === "buy" ? "arrowUp" : "arrowDown") as "arrowUp" | "arrowDown",
+            text: m.side === "buy" ? "B" : "S",
+            size: 1,
+          }));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (mainSeries as any).setMarkers(markers);
+      } catch (_) {
+        // markers API not available
+      }
     }
 
     // Helper: add overlay line series
@@ -140,7 +171,7 @@ export default function PriceChart({
 
     for (const cfg of activeConfigs) {
       const { type, params, color, label } = cfg;
-      if (OSCILLATOR_TYPES.has(type)) continue; // rendered in sub-pane
+      if (OSCILLATOR_TYPES.has(type)) continue;
 
       if (type === "ema") {
         const p = Number(params.period) || 9;
@@ -191,8 +222,8 @@ export default function PriceChart({
         addLine("#ef4444", `${label} ↓`).setData(toPoints(down, times));
       } else if (type === "psar") {
         const psar = calcParabolicSAR(bars, Number(params.step) || 0.02, Number(params.max) || 0.2);
-        const ps = chart.addLineSeries({ color, lineWidth: 1, lineStyle: LineStyle.Dotted, priceLineVisible: false, title: label });
-        ps.setData(toPoints(psar, times));
+        chart.addLineSeries({ color, lineWidth: 1, lineStyle: LineStyle.Dotted, priceLineVisible: false, title: label })
+          .setData(toPoints(psar, times));
       } else if (type === "ichimoku") {
         const { tenkanSen, kijunSen, spanA, spanB } = calcIchimoku(
           bars, Number(params.tenkan) || 9, Number(params.kijun) || 26, Number(params.senkou) || 52
@@ -211,10 +242,7 @@ export default function PriceChart({
       if (intraday) {
         const to = Number(lastTime) as UTCTimestamp;
         const days = visiblePeriod === "1d" ? 1 : visiblePeriod === "2w" ? 14 : visiblePeriod === "1m" ? 30 : visiblePeriod === "3m" ? 90 : 365;
-        chart.timeScale().setVisibleRange({
-          from: (to - days * 86_400) as UTCTimestamp,
-          to,
-        });
+        chart.timeScale().setVisibleRange({ from: (to - days * 86_400) as UTCTimestamp, to });
       } else {
         const toDate = new Date(String(lastTime) + "T00:00:00Z");
         const fromDate = new Date(toDate.getTime());
@@ -332,7 +360,7 @@ export default function PriceChart({
       oscChart?.remove();
       ro.disconnect();
     };
-  }, [bars, chartType, depKey, intraday, symbol, visiblePeriod, onVisibleBarsChange]);
+  }, [bars, chartType, depKey, markersKey, intraday, symbol, visiblePeriod, onVisibleBarsChange]);
 
   return (
     <div className="flex flex-col w-full h-full">

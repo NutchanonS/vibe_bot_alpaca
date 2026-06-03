@@ -44,11 +44,12 @@ app.use("/api/orders", authMiddleware, ordersRoutes);
 app.use("/api/strategies", authMiddleware, strategiesRoutes);
 app.use("/api/watchlist", authMiddleware, watchlistRoutes);
 
-// Chart, quote, assets, indicators
+// Chart, quote, assets, indicators, backtest
 app.use("/api/chart", authMiddleware, require("./routes/chart"));
 app.use("/api/quote", authMiddleware, require("./routes/quote"));
 app.use("/api/assets", authMiddleware, require("./routes/assets"));
 app.use("/api/indicators", authMiddleware, require("./routes/indicators"));
+app.use("/api/backtest", authMiddleware, require("./routes/backtest"));
 
 // Start WebSocket relay
 startRelay(io);

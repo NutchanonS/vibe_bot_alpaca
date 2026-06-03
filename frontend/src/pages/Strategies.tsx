@@ -853,6 +853,23 @@ function MonitorTab() {
   );
 }
 
+// ── Backtest types ─────────────────────────────────────────────────────────────
+
+interface BtStats {
+  totalTrades: number; openTrades: number;
+  wins: number; losses: number; winRate: number;
+  totalPnlPct: number; avgWin: number; avgLoss: number; profitFactor: number;
+  curve: { time: string; cumPnl: number }[];
+}
+interface BtTrade {
+  entryTime: string; exitTime: string;
+  entryPrice: number; exitPrice: number;
+  pnlPct: number; open?: boolean;
+}
+interface BtResult { trades: BtTrade[]; stats: BtStats; params: Record<string, number>; }
+interface BtSymbolData { barCount: number; results: Record<string, BtResult>; }
+interface BtResponse { timeframe: string; symbols: string[]; data: Record<string, BtSymbolData>; }
+
 // ── Backtest constants ─────────────────────────────────────────────────────────
 
 const BT_STRAT_COLORS: Record<string, string> = {
@@ -861,18 +878,27 @@ const BT_STRAT_COLORS: Record<string, string> = {
   vwap_breakout:      "#22d3ee",
 };
 
-const BT_API_TIMEFRAME_BY_WINDOW: Record<"1d" | "2w" | "1m" | "3m" | "1y", "1D" | "2W" | "1M" | "3M" | "1Y"> = {
-  "1d": "1D",
-  "2w": "2W",
-  "1m": "1M",
-  "3m": "3M",
-  "1y": "1Y",
+const BT_CHART_TF: Record<"1m"|"3m"|"6m"|"1y", "1M"|"3M"|"1Y"> = {
+  "1m": "1M", "3m": "3M", "6m": "3M", "1y": "1Y",
 };
 
-function getBtStratColor(name: string): string {
-  if (name in BT_STRAT_COLORS) return BT_STRAT_COLORS[name];
-  const h = name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
-  return SIM_COLORS[h % SIM_COLORS.length];
+const BT_VIS_PERIOD: Record<"1m"|"3m"|"6m"|"1y", "1m"|"3m"|"1y"> = {
+  "1m": "1m", "3m": "3m", "6m": "3m", "1y": "1y",
+};
+
+const COMPARE_SYMS = ["SPY", "AAPL", "TSLA", "NVDA", "QQQ", "MSFT"];
+
+const STRAT_SHORT: Record<string, string> = {
+  rsi_mean_reversion: "RSI Mean Rev",
+  ema_crossover:      "EMA Crossover",
+  vwap_breakout:      "VWAP Breakout",
+};
+
+function pnlPctColor(v: number): string {
+  return v > 0 ? "text-gain" : v < 0 ? "text-loss" : "text-gray-400";
+}
+function fmtPct(v: number): string {
+  return `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
 }
 
 // ── Backtest Monitor Tab ──────────────────────────────────────────────────────
@@ -880,62 +906,97 @@ function getBtStratColor(name: string): string {
 function BacktestTab() {
   const [symbol, setSymbol] = useState("SPY");
   const [stratFilter, setStratFilter] = useState("all");
-  const [timeframe, setTimeframe] = useState<"1d"|"2w"|"1m"|"3m"|"1y">("3m");
+  const [timeframe, setTimeframe] = useState<"1m"|"3m"|"6m"|"1y">("3m");
   const [chartType, setChartType] = useState<"candlestick" | "line">("candlestick");
+  const [mode, setMode] = useState<"simulated"|"live">("simulated");
 
-  const { data: chartData, isLoading: chartLoading, isError: chartError } = useQuery({
-    queryKey: ["chart", symbol, timeframe],
-    queryFn:  () => api.get(`/chart/${symbol}?timeframe=${BT_API_TIMEFRAME_BY_WINDOW[timeframe]}&extended=1`).then(r => r.data),
+  // Chart data (daily bars for the selected symbol)
+  const { data: chartData, isLoading: chartLoading } = useQuery({
+    queryKey: ["chart", symbol, BT_CHART_TF[timeframe]],
+    queryFn: () => api.get(`/chart/${symbol}?timeframe=${BT_CHART_TF[timeframe]}&extended=1`).then(r => r.data),
   });
-  const bars: Bar[]         = chartData?.bars    ?? [];
+  const bars: Bar[] = chartData?.bars ?? [];
   const isIntraday: boolean = chartData?.intraday ?? false;
+  const lastBar = bars[bars.length - 1];
 
+  // Indicators for chart overlays
+  const { data: indicatorsMap = {} as IndicatorsMap } = useQuery<IndicatorsMap>({
+    queryKey: ["indicators"],
+    queryFn: () => api.get("/indicators").then(r => r.data),
+    staleTime: 30_000,
+  });
+  const indicatorConfigs = Object.entries(indicatorsMap).map(([id, cfg]) => ({ id, ...cfg }));
+
+  // Simulated backtest: all watchlist symbols × all strategies
+  const { data: btData, isLoading: btLoading } = useQuery<BtResponse>({
+    queryKey: ["backtest", COMPARE_SYMS.join(","), stratFilter, timeframe],
+    queryFn: () =>
+      api.get(`/backtest?symbols=${COMPARE_SYMS.join(",")}&strategy=${stratFilter}&timeframe=${timeframe}`)
+        .then(r => r.data),
+    enabled: mode === "simulated",
+    staleTime: 120_000,
+  });
+
+  // Live trades from DB
   const { data: allTrades = [] } = useQuery<Trade[]>({
     queryKey: ["trades"], queryFn: () => api.get("/trades").then(r => r.data),
-  });
-  const { data: strategies = {} as StrategiesMap } = useQuery<StrategiesMap>({
-    queryKey: ["strategies"], queryFn: () => api.get("/strategies").then(r => r.data),
+    enabled: mode === "live",
   });
 
-  const trades = useMemo(
+  const activeStrategies = stratFilter === "all"
+    ? ["rsi_mean_reversion", "ema_crossover", "vwap_breakout"]
+    : [stratFilter];
+
+  // The selected symbol's backtest data
+  const symbolBt = btData?.data[symbol];
+
+  // Trade markers: buy=entry, sell=exit for each simulated trade
+  const tradeMarkers = useMemo(() => {
+    if (!symbolBt || mode !== "simulated") return [];
+    const markers: { time: string; side: "buy" | "sell"; strategy?: string }[] = [];
+    for (const strat of activeStrategies) {
+      const r = symbolBt.results[strat];
+      if (!r) continue;
+      r.trades.forEach(t => {
+        markers.push({ time: String(t.entryTime), side: "buy", strategy: strat });
+        if (!t.open) markers.push({ time: String(t.exitTime), side: "sell", strategy: strat });
+      });
+    }
+    return markers;
+  }, [symbolBt, mode, activeStrategies.join(",")]);
+
+  // Cumulative P&L curve (merged by date) for recharts
+  const pnlCurve = useMemo(() => {
+    if (!symbolBt) return [];
+    const byStrat: Record<string, { time: string; pnl: number }[]> = {};
+    for (const strat of activeStrategies) {
+      const r = symbolBt.results[strat];
+      if (!r) continue;
+      byStrat[strat] = r.stats.curve.map(c => ({ time: String(c.time), pnl: c.cumPnl }));
+    }
+    const allDates = [...new Set(Object.values(byStrat).flat().map(d => d.time))].sort();
+    return allDates.map(date => {
+      const row: Record<string, string | number> = { date };
+      Object.entries(byStrat).forEach(([s, pts]) => {
+        const match = pts.filter(p => p.time <= date).slice(-1)[0];
+        if (match) row[s] = match.pnl;
+      });
+      return row;
+    });
+  }, [symbolBt, activeStrategies.join(",")]);
+
+  // Live trades derived stats
+  const liveTrades = useMemo(
     () => allTrades.filter(t => t.symbol === symbol && (stratFilter === "all" || t.strategy === stratFilter)),
     [allTrades, symbol, stratFilter]
   );
-
-  // ── Stats (all trades in period) ──────────────────────────────────────────
-  const simStats = useMemo(() => {
-    const closed = trades.filter(t => t.pnl !== null && t.side === "sell");
+  const liveStats = useMemo(() => {
+    const closed = liveTrades.filter(t => t.pnl !== null && t.side === "sell");
     let pnl = 0, wins = 0;
     closed.forEach(t => { pnl += Number(t.pnl!); if (Number(t.pnl!) > 0) wins++; });
     const count = closed.length;
-    return { pnl, wins, count, losses: count - wins, winRate: count > 0 ? (wins / count) * 100 : 0 };
-  }, [trades]);
-
-  const firstBar = bars[0], lastBar = bars[bars.length - 1];
-  const windowSub = useMemo(() => {
-    if (!lastBar) return "—";
-
-    if (typeof lastBar.time === "number") {
-      const to = new Date(lastBar.time * 1000);
-      const from = new Date(to.getTime());
-      if (timeframe === "1d") from.setUTCDate(from.getUTCDate() - 1);
-      else if (timeframe === "2w") from.setUTCDate(from.getUTCDate() - 14);
-      else if (timeframe === "1m") from.setUTCMonth(from.getUTCMonth() - 1);
-      else if (timeframe === "3m") from.setUTCMonth(from.getUTCMonth() - 3);
-      else from.setUTCFullYear(from.getUTCFullYear() - 1);
-
-      return `${from.toISOString().slice(0, 16).replace("T", " ")}Z - ${to.toISOString().slice(0, 16).replace("T", " ")}Z`;
-    }
-
-    const to = new Date(`${String(lastBar.time)}T00:00:00Z`);
-    const from = new Date(to.getTime());
-    if (timeframe === "1d") from.setUTCDate(from.getUTCDate() - 1);
-    else if (timeframe === "2w") from.setUTCDate(from.getUTCDate() - 14);
-    else if (timeframe === "1m") from.setUTCMonth(from.getUTCMonth() - 1);
-    else if (timeframe === "3m") from.setUTCMonth(from.getUTCMonth() - 3);
-    else from.setUTCFullYear(from.getUTCFullYear() - 1);
-    return `${from.toISOString().slice(0,10)} - ${String(lastBar.time)}`;
-  }, [lastBar, timeframe]);
+    return { pnl, wins, count, losses: count - wins, winRate: count > 0 ? wins / count * 100 : 0 };
+  }, [liveTrades]);
 
   return (
     <div className="space-y-4">
@@ -951,24 +1012,21 @@ function BacktestTab() {
           <select value={stratFilter} onChange={e => setStratFilter(e.target.value)}
             className="bg-surface border border-border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-brand">
             <option value="all">All Strategies</option>
-            {Object.entries(strategies).map(([name, cfg]) => (
-              <option key={name} value={name}>{(cfg as StrategyConfig).label ?? BUILTIN_LABELS[name] ?? name}</option>
-            ))}
+            <option value="rsi_mean_reversion">RSI Mean Reversion</option>
+            <option value="ema_crossover">EMA Crossover</option>
+            <option value="vwap_breakout">VWAP Breakout</option>
           </select>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-400">Chart</span>
-          <select
-            value={chartType}
-            onChange={e => setChartType(e.target.value as "candlestick" | "line")}
-            className="bg-surface border border-border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-brand"
-          >
+          <select value={chartType} onChange={e => setChartType(e.target.value as "candlestick"|"line")}
+            className="bg-surface border border-border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-brand">
             <option value="candlestick">Candlestick</option>
             <option value="line">Line</option>
           </select>
         </div>
         <div className="flex gap-1">
-          {(["1d","2w","1m","3m","1y"] as const).map(tf => (
+          {(["1m","3m","6m","1y"] as const).map(tf => (
             <button key={tf} onClick={() => setTimeframe(tf)}
               className={clsx("px-2.5 py-1 rounded text-xs font-medium transition-colors",
                 timeframe === tf ? "bg-brand text-white" : "text-gray-400 hover:bg-border hover:text-white")}>
@@ -976,95 +1034,321 @@ function BacktestTab() {
             </button>
           ))}
         </div>
-        <div className="ml-auto flex items-center gap-2 text-xs text-gray-500">
-          {firstBar && lastBar && (
-            <span className="font-mono">{bars.length} bars loaded · {String(firstBar.time)} → {String(lastBar.time)}</span>
+        {/* Mode toggle */}
+        <div className="ml-auto flex bg-surface border border-border rounded-lg overflow-hidden text-xs">
+          {(["simulated", "live"] as const).map(m => (
+            <button key={m} onClick={() => setMode(m)}
+              className={clsx("px-3 py-1.5 font-medium transition-colors",
+                mode === m ? "bg-brand text-white" : "text-gray-400 hover:text-white")}>
+              {m === "simulated" ? "Simulated" : "Live Trades"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ══ SIMULATED BACKTEST ══ */}
+      {mode === "simulated" && (
+        <>
+          {btLoading ? (
+            <div className="flex items-center justify-center py-16 text-gray-500 text-sm">
+              Running strategy simulations on {COMPARE_SYMS.join(", ")}…
+            </div>
+          ) : !btData ? (
+            <div className="flex items-center justify-center py-16 text-gray-500 text-sm">No backtest data.</div>
+          ) : (
+            <>
+              {/* Strategy performance cards */}
+              <div>
+                <p className="text-[10px] uppercase tracking-widest text-gray-500 mb-2">
+                  Strategy Performance — {symbol} ({timeframe.toUpperCase()})
+                </p>
+                <div className="grid grid-cols-3 gap-3">
+                  {["rsi_mean_reversion","ema_crossover","vwap_breakout"].map((strat, i) => {
+                    const r  = symbolBt?.results[strat];
+                    const s  = r?.stats;
+                    const col = BT_STRAT_COLORS[strat] ?? SIM_COLORS[i];
+                    const dim = stratFilter !== "all" && stratFilter !== strat;
+                    return (
+                      <div key={strat} className={clsx("bg-panel border rounded-lg p-4 transition-opacity", dim ? "opacity-30 border-border" : "border-border")}>
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: col }} />
+                            <span className="font-semibold text-sm">{STRAT_SHORT[strat]}</span>
+                          </div>
+                          {s && s.totalTrades > 0 && (
+                            <span className={clsx("text-[10px] font-bold px-2 py-0.5 rounded",
+                              s.totalPnlPct > 0 ? "bg-gain/20 text-gain" : "bg-loss/20 text-loss")}>
+                              {s.totalPnlPct > 0 ? "✓ Profitable" : "✗ Losing"}
+                            </span>
+                          )}
+                        </div>
+                        {!s || s.totalTrades === 0 ? (
+                          <p className="text-xs text-gray-500 italic">No signals in period</p>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-y-2 text-xs">
+                            <div>
+                              <p className="text-gray-500">Total Return</p>
+                              <p className={clsx("font-bold text-sm", pnlPctColor(s.totalPnlPct))}>{fmtPct(s.totalPnlPct)}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500">Win Rate</p>
+                              <p className={clsx("font-bold text-sm", s.winRate >= 50 ? "text-gain" : "text-loss")}>
+                                {s.winRate.toFixed(0)}%
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500">Trades</p>
+                              <p className="font-semibold text-white">{s.totalTrades} ({s.wins}W/{s.losses}L)</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500">Profit Factor</p>
+                              <p className={clsx("font-semibold", s.profitFactor >= 1 ? "text-gain" : "text-loss")}>
+                                {s.profitFactor.toFixed(2)}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500">Avg Win</p>
+                              <p className="text-gain font-semibold">{s.wins > 0 ? fmtPct(s.avgWin) : "—"}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500">Avg Loss</p>
+                              <p className="text-loss font-semibold">{s.losses > 0 ? fmtPct(s.avgLoss) : "—"}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Cumulative P&L chart */}
+              {pnlCurve.length > 1 && (
+                <div className="bg-panel border border-border rounded-lg p-4">
+                  <p className="text-xs text-gray-500 uppercase tracking-widest mb-3">
+                    Cumulative Return (%) — {symbol}
+                  </p>
+                  <ResponsiveContainer width="100%" height={160}>
+                    <LineChart data={pnlCurve}>
+                      <XAxis dataKey="date" tick={{ fill: "#9ca3af", fontSize: 10 }} />
+                      <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} tickFormatter={(v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`} />
+                      <Tooltip formatter={(v: number) => [fmtPct(v), ""]} />
+                      <Legend />
+                      {activeStrategies.map(s => (
+                        <Line key={s} type="monotone" dataKey={s} name={STRAT_SHORT[s] ?? s}
+                          stroke={BT_STRAT_COLORS[s] ?? "#6366f1"} dot={false} strokeWidth={2} connectNulls />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+
+              {/* Price chart with indicator overlays + trade markers */}
+              <div className="bg-panel border border-border rounded-lg overflow-hidden">
+                <div className="px-4 py-2 border-b border-border flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-gray-400">{symbol} — simulated entry/exit markers</span>
+                    {lastBar && <span className="text-xs text-gray-600 font-mono">Last: {fmt.currency(lastBar.close)}</span>}
+                  </div>
+                  <div className="flex items-center gap-3 text-[10px] text-gray-500">
+                    <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-gain" /> Buy signal</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-loss" /> Sell signal</span>
+                    {indicatorConfigs.filter(c => c.active).slice(0, 3).map(c => (
+                      <span key={c.id} className="flex items-center gap-1">
+                        <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
+                        {c.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                {chartLoading ? (
+                  <div className="flex items-center justify-center text-gray-500 text-sm" style={{ height: 400 }}>Loading chart…</div>
+                ) : bars.length === 0 ? (
+                  <div className="flex items-center justify-center text-gray-500 text-sm" style={{ height: 400 }}>No data for {symbol}</div>
+                ) : (
+                  <div style={{ height: 400 }}>
+                    <PriceChart bars={bars} symbol={symbol} chartType={chartType} intraday={isIntraday}
+                      visiblePeriod={BT_VIS_PERIOD[timeframe]}
+                      indicatorConfigs={indicatorConfigs}
+                      tradeMarkers={tradeMarkers} />
+                  </div>
+                )}
+              </div>
+
+              {/* Multi-symbol comparison table */}
+              <div className="bg-panel border border-border rounded-lg overflow-hidden">
+                <div className="px-4 py-3 border-b border-border">
+                  <p className="text-xs text-gray-500 uppercase tracking-widest">Strategy × Symbol Comparison — {timeframe.toUpperCase()}</p>
+                  <p className="text-[10px] text-gray-600 mt-0.5">Simulated total return %. wr = win rate, t = trades.</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-gray-500 border-b border-border bg-surface/30">
+                        <th className="text-left px-4 py-2 font-medium w-36">Strategy</th>
+                        {COMPARE_SYMS.map(sym => (
+                          <th key={sym} className={clsx("text-center px-3 py-2 font-medium", sym === symbol && "text-brand")}>{sym}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {["rsi_mean_reversion","ema_crossover","vwap_breakout"].map((strat, ri) => (
+                        <tr key={strat} className={clsx("border-b border-border/40", ri % 2 === 0 && "bg-surface/20")}>
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: BT_STRAT_COLORS[strat] }} />
+                              <span className="font-medium text-gray-300">{STRAT_SHORT[strat]}</span>
+                            </div>
+                          </td>
+                          {COMPARE_SYMS.map(sym => {
+                            const r = btData.data[sym]?.results[strat];
+                            const s = r?.stats;
+                            if (!s || s.totalTrades === 0) {
+                              return <td key={sym} className="text-center px-3 py-2.5 text-gray-600">—</td>;
+                            }
+                            return (
+                              <td key={sym} className={clsx("text-center px-3 py-2.5", sym === symbol && "bg-brand/5")}>
+                                <div className={clsx("font-semibold", pnlPctColor(s.totalPnlPct))}>{fmtPct(s.totalPnlPct)}</div>
+                                <div className="text-[10px] text-gray-500">{s.winRate.toFixed(0)}%wr · {s.totalTrades}t</div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Simulated trade log for selected symbol */}
+              {symbolBt && Object.values(symbolBt.results).some(r => r.trades.length > 0) && (
+                <div className="bg-panel border border-border rounded-lg overflow-hidden">
+                  <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                    <p className="text-xs text-gray-500 uppercase tracking-widest">Simulated Trade Log — {symbol}</p>
+                    <p className="text-[10px] text-gray-600">Enters next-bar open on signal · Exits next-bar open on reverse</p>
+                  </div>
+                  <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-[#0d1117]">
+                        <tr className="text-gray-500 border-b border-border">
+                          {["Strategy","Entry","Entry $","Exit","Exit $","Return %","Status"].map(h => (
+                            <th key={h} className="text-left px-3 py-2 font-medium">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeStrategies.flatMap(strat => {
+                          const r = symbolBt.results[strat];
+                          if (!r) return [];
+                          return r.trades.map((t, i) => (
+                            <tr key={`${strat}-${i}`} className="border-b border-border/40 hover:bg-surface/50">
+                              <td className="px-3 py-2">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: BT_STRAT_COLORS[strat] }} />
+                                  <span className="text-gray-300">{STRAT_SHORT[strat]}</span>
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-gray-400">{String(t.entryTime).slice(0, 10)}</td>
+                              <td className="px-3 py-2">{fmt.currency(t.entryPrice)}</td>
+                              <td className="px-3 py-2 text-gray-400">{String(t.exitTime).slice(0, 10)}</td>
+                              <td className="px-3 py-2">{fmt.currency(t.exitPrice)}</td>
+                              <td className={clsx("px-3 py-2 font-semibold", pnlPctColor(t.pnlPct))}>{fmtPct(t.pnlPct)}</td>
+                              <td className="px-3 py-2">
+                                {t.open
+                                  ? <span className="text-[10px] text-yellow-400 bg-yellow-400/10 px-1.5 py-0.5 rounded">OPEN</span>
+                                  : <span className="text-[10px] text-gray-500">CLOSED</span>}
+                              </td>
+                            </tr>
+                          ));
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
           )}
-          <span className="text-faint">← drag to scroll →</span>
-        </div>
-      </div>
+        </>
+      )}
 
-      {/* ── Stats ── */}
-      <div className="grid grid-cols-5 gap-3">
-          {[
-            { label: "Window", value: timeframe.toUpperCase(), sub: windowSub },
-          { label: "Last Close", value: lastBar ? fmt.currency(lastBar.close) : "—", sub: `of ${bars.length} bars` },
-          { label: "Sim P&L", value: simStats.count > 0 ? fmt.currency(simStats.pnl) : "—", color: simStats.pnl >= 0 ? "text-gain" : "text-loss" },
-          { label: "Win Rate", value: simStats.count > 0 ? `${simStats.winRate.toFixed(1)}%` : "—", color: simStats.winRate >= 50 ? "text-gain" : "text-loss" },
-          { label: "Trades", value: `${simStats.count} (${simStats.wins}W / ${simStats.losses}L)` },
-        ].map(({ label, value, sub, color }: any) => (
-          <div key={label} className="bg-panel border border-border rounded-lg px-4 py-3">
-            <p className="text-[11px] text-gray-500 uppercase tracking-wide">{label}</p>
-            <p className={clsx("text-sm font-bold mt-0.5", color || "text-white")}>{value}</p>
-            {sub && <p className="text-[10px] text-gray-600 mt-0.5">{sub}</p>}
+      {/* ══ LIVE TRADES ══ */}
+      {mode === "live" && (
+        <>
+          <div className="grid grid-cols-5 gap-3">
+            {[
+              { label: "Window", value: timeframe.toUpperCase() },
+              { label: "Last Close", value: lastBar ? fmt.currency(lastBar.close) : "—", sub: `${bars.length} bars` },
+              { label: "Realized P&L", value: liveStats.count > 0 ? fmt.currency(liveStats.pnl) : "—", color: liveStats.pnl >= 0 ? "text-gain" : "text-loss" },
+              { label: "Win Rate", value: liveStats.count > 0 ? `${liveStats.winRate.toFixed(1)}%` : "—", color: liveStats.winRate >= 50 ? "text-gain" : "text-loss" },
+              { label: "Trades", value: `${liveStats.count} (${liveStats.wins}W/${liveStats.losses}L)` },
+            ].map(({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) => (
+              <div key={label} className="bg-panel border border-border rounded-lg px-4 py-3">
+                <p className="text-[11px] text-gray-500 uppercase tracking-wide">{label}</p>
+                <p className={clsx("text-sm font-bold mt-0.5", color || "text-white")}>{value}</p>
+                {sub && <p className="text-[10px] text-gray-600 mt-0.5">{sub}</p>}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      {/* ── Main price chart ── */}
-      <div className="bg-panel border border-border rounded-lg overflow-hidden">
-        {chartLoading ? (
-          <div className="flex items-center justify-center text-gray-500 text-sm" style={{ height: 420 }}>
-            Loading {symbol} chart data…
+          <div className="bg-panel border border-border rounded-lg overflow-hidden">
+            {chartLoading ? (
+              <div className="flex items-center justify-center text-gray-500 text-sm" style={{ height: 400 }}>Loading chart…</div>
+            ) : bars.length === 0 ? (
+              <div className="flex items-center justify-center text-gray-500 text-sm" style={{ height: 400 }}>No data for {symbol}</div>
+            ) : (
+              <div style={{ height: 400 }}>
+                <PriceChart bars={bars} symbol={symbol} chartType={chartType} intraday={isIntraday}
+                  visiblePeriod={BT_VIS_PERIOD[timeframe]} indicatorConfigs={indicatorConfigs} />
+              </div>
+            )}
           </div>
-        ) : chartError ? (
-          <div className="flex items-center justify-center text-loss text-sm" style={{ height: 420 }}>
-            Failed to load chart data.
-          </div>
-        ) : bars.length === 0 ? (
-          <div className="flex items-center justify-center text-gray-500 text-sm" style={{ height: 420 }}>
-            No chart bars returned for {symbol}.
-          </div>
-        ) : (
-          <div style={{ height: 420 }}>
-            <PriceChart bars={bars} symbol={symbol} chartType={chartType} intraday={isIntraday} visiblePeriod={timeframe} />
-          </div>
-        )}
-      </div>
 
-      {/* ── Trade log (flat, no scroll) ── */}
-      {trades.length > 0 && (
-        <div className="bg-panel border border-border rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-            <p className="text-xs text-gray-500 uppercase tracking-widest">All Trades in Period — {trades.length}</p>
-            <p className="text-xs text-gray-600">{simStats.wins} wins · {simStats.losses} losses · {simStats.count > 0 ? simStats.winRate.toFixed(1) : 0}% win rate</p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-gray-500 border-b border-border bg-surface/30">
-                  {["Date","Strategy","Side","Qty","Price","P&L"].map(h => (
-                    <th key={h} className="text-left px-3 py-2 font-medium">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(trades as Trade[]).map(t => (
-                  <tr key={t.id} className="border-b border-border/40 hover:bg-surface/50">
-                    <td className="px-3 py-2 text-gray-500">{t.filled_at.slice(0,10)}</td>
-                    <td className="px-3 py-2">
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: getBtStratColor(t.strategy) }} />
-                        <span className="text-gray-300">{BUILTIN_LABELS[t.strategy] ?? t.strategy.replace(/_/g," ")}</span>
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className={clsx("font-bold px-1.5 py-0.5 rounded text-[10px]",
-                        t.side === "buy" ? "bg-gain/20 text-gain" : "bg-loss/20 text-loss")}>
-                        {t.side.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">{t.qty}</td>
-                    <td className="px-3 py-2">{fmt.currency(t.price)}</td>
-                    <td className={clsx("px-3 py-2 font-semibold", t.pnl !== null ? pnlColor(t.pnl) : "text-gray-500")}>
-                      {t.pnl !== null ? fmt.currency(t.pnl) : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+          {liveTrades.length > 0 ? (
+            <div className="bg-panel border border-border rounded-lg overflow-hidden">
+              <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                <p className="text-xs text-gray-500 uppercase tracking-widest">Live Trades — {symbol} ({liveTrades.length})</p>
+                <p className="text-xs text-gray-600">{liveStats.wins}W · {liveStats.losses}L · {liveStats.count > 0 ? liveStats.winRate.toFixed(1) : 0}% wr</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead><tr className="text-gray-500 border-b border-border bg-surface/30">
+                    {["Date","Strategy","Side","Qty","Price","P&L"].map(h => (
+                      <th key={h} className="text-left px-3 py-2 font-medium">{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>
+                    {(liveTrades as Trade[]).map(t => (
+                      <tr key={t.id} className="border-b border-border/40 hover:bg-surface/50">
+                        <td className="px-3 py-2 text-gray-500">{t.filled_at.slice(0,10)}</td>
+                        <td className="px-3 py-2">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: BT_STRAT_COLORS[t.strategy] ?? "#6366f1" }} />
+                            <span className="text-gray-300">{BUILTIN_LABELS[t.strategy] ?? t.strategy.replace(/_/g," ")}</span>
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">
+                          <span className={clsx("font-bold px-1.5 py-0.5 rounded text-[10px]",
+                            t.side === "buy" ? "bg-gain/20 text-gain" : "bg-loss/20 text-loss")}>
+                            {t.side.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">{t.qty}</td>
+                        <td className="px-3 py-2">{fmt.currency(t.price)}</td>
+                        <td className={clsx("px-3 py-2 font-semibold", t.pnl !== null ? pnlColor(t.pnl) : "text-gray-500")}>
+                          {t.pnl !== null ? fmt.currency(t.pnl) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-panel border border-border rounded-lg px-4 py-8 text-center text-gray-500 text-sm">
+              No live trades recorded for {symbol}. Enable strategies in the Trading tab to start generating trades.
+            </div>
+          )}
+        </>
       )}
     </div>
   );

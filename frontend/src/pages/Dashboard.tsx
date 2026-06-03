@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import PriceChart from "../components/PriceChart";
+import type { IndicatorConfig } from "../components/PriceChart";
 import AlertBanner from "../components/AlertBanner";
 import SymbolSearch from "../components/SymbolSearch";
 import PortfolioSummary from "../components/PortfolioSummary";
@@ -30,17 +31,143 @@ interface Order {
   created_at: string;
 }
 interface SignalLog { strategy: string; symbol: string; signal: string; time: string; }
+interface IndicatorsMap { [id: string]: Omit<IndicatorConfig, "id">; }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
 const TIMEFRAMES = ["1d", "2w", "1m", "3m", "1y"] as const;
 const API_TIMEFRAME_BY_WINDOW: Record<(typeof TIMEFRAMES)[number], "1D" | "2W" | "1M" | "3M" | "1Y"> = {
-  "1d": "1D",
-  "2w": "2W",
-  "1m": "1M",
-  "3m": "3M",
-  "1y": "1Y",
+  "1d": "1D", "2w": "2W", "1m": "1M", "3m": "3M", "1y": "1Y",
 };
+
+const IND_COLORS = ["#f59e0b","#8b5cf6","#06b6d4","#22c55e","#ef4444","#ec4899","#14b8a6","#f97316"];
+
+// ─── Inline Indicator Strip ────────────────────────────────────────────────────
+
+function IndicatorStrip({ indicators, intraday }: { indicators: IndicatorConfig[]; intraday: boolean }) {
+  const qc = useQueryClient();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editParams, setEditParams] = useState<Record<string, string>>({});
+  const [editColor, setEditColor] = useState<string>("");
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  const saveMut = useMutation({
+    mutationFn: ({ id, params, color }: { id: string; params: Record<string, unknown>; color: string }) =>
+      api.patch(`/indicators/${id}`, { params, color }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["indicators"] }); setEditingId(null); },
+  });
+  const toggleMut = useMutation({
+    mutationFn: ({ id, active }: { id: string; active: boolean }) => api.patch(`/indicators/${id}`, { active }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["indicators"] }),
+  });
+
+  // Close popover on outside click
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setEditingId(null);
+      }
+    }
+    if (editingId) document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [editingId]);
+
+  const active = indicators.filter(c => c.active);
+
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap" ref={popoverRef}>
+      {active.map(cfg => {
+        const isIntraOnly = cfg.type === "vwap" || cfg.type === "vwap_bands";
+        const dimmed = isIntraOnly && !intraday;
+        return (
+          <div key={cfg.id} className="relative">
+            <button
+              onClick={() => {
+                if (editingId === cfg.id) { setEditingId(null); return; }
+                setEditingId(cfg.id);
+                setEditParams(Object.fromEntries(Object.entries(cfg.params).map(([k, v]) => [k, String(v)])));
+                setEditColor(cfg.color);
+              }}
+              className={clsx(
+                "flex items-center gap-1 px-2 py-0.5 rounded text-xs border transition-colors",
+                dimmed
+                  ? "border-border/40 opacity-40 cursor-default"
+                  : editingId === cfg.id
+                    ? "border-brand bg-brand/10"
+                    : "border-border hover:border-brand/60"
+              )}
+              title={isIntraOnly && !intraday ? `${cfg.label} (intraday only)` : cfg.label}
+            >
+              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cfg.color }} />
+              <span className="text-gray-200">{cfg.label}</span>
+              {isIntraOnly && !intraday && <span className="text-[9px] text-gray-600 ml-0.5">~D</span>}
+              <span className="text-gray-600 text-[10px]">▾</span>
+            </button>
+
+            {editingId === cfg.id && !dimmed && (
+              <div className="absolute top-full left-0 mt-1 z-50 bg-[#161b27] border border-border rounded-lg p-3 shadow-2xl min-w-[170px]">
+                <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">{cfg.label}</p>
+                {Object.entries(cfg.params).map(([k, v]) => (
+                  <div key={k} className="flex items-center gap-2 mb-2">
+                    <label className="text-xs text-gray-400 w-16 flex-shrink-0">{k}</label>
+                    <input
+                      type="number" step="any"
+                      className="flex-1 min-w-0 bg-surface border border-border rounded px-2 py-1 text-xs text-right focus:outline-none focus:border-brand"
+                      value={editParams[k] ?? String(v)}
+                      onChange={e => setEditParams(p => ({ ...p, [k]: e.target.value }))}
+                    />
+                  </div>
+                ))}
+                {Object.keys(cfg.params).length === 0 && (
+                  <p className="text-xs text-gray-600 italic mb-2">No parameters</p>
+                )}
+                <div className="flex gap-1 flex-wrap mb-2">
+                  {IND_COLORS.map(c => (
+                    <button key={c} onClick={() => setEditColor(c)}
+                      className={clsx("w-4 h-4 rounded-full border-2 transition-all",
+                        editColor === c ? "border-white scale-110" : "border-transparent")}
+                      style={{ backgroundColor: c }} />
+                  ))}
+                </div>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => {
+                      saveMut.mutate({
+                        id: cfg.id,
+                        color: editColor || cfg.color,
+                        params: Object.fromEntries(Object.entries(editParams).map(([k, v]) => [k, isNaN(Number(v)) ? v : Number(v)])),
+                      });
+                    }}
+                    disabled={saveMut.isPending}
+                    className="flex-1 text-xs bg-brand rounded py-1 font-semibold disabled:opacity-50"
+                  >
+                    {saveMut.isPending ? "…" : "Save"}
+                  </button>
+                  <button
+                    onClick={() => { toggleMut.mutate({ id: cfg.id, active: false }); setEditingId(null); }}
+                    className="text-xs text-gray-500 hover:text-gray-300 px-2 rounded border border-border"
+                    title="Hide indicator"
+                  >
+                    Hide
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Hidden indicators count */}
+      {indicators.filter(c => !c.active).length > 0 && (
+        <span className="text-[10px] text-gray-600 italic">
+          +{indicators.filter(c => !c.active).length} hidden
+        </span>
+      )}
+
+      <span className="text-[10px] text-gray-600 ml-1">← Indicators tab to manage</span>
+    </div>
+  );
+}
 
 // ─── Small components ──────────────────────────────────────────────────────────
 
@@ -199,6 +326,12 @@ export default function Dashboard() {
     refetchInterval: 15_000,
   });
 
+  const { data: indicatorsMap = {} as IndicatorsMap } = useQuery<IndicatorsMap>({
+    queryKey: ["indicators"],
+    queryFn: () => api.get("/indicators").then(r => r.data),
+    staleTime: 30_000,
+  });
+
   useEffect(() => {
     const socket = getSocket();
     socket.on("signal_fired", (data: SignalLog) => {
@@ -215,6 +348,8 @@ export default function Dashboard() {
   const bars = chartData?.bars ?? [];
   const isIntraday = chartData?.intraday ?? false;
 
+  const indicatorConfigs: IndicatorConfig[] = Object.entries(indicatorsMap).map(([id, cfg]) => ({ id, ...cfg }));
+
   return (
     <div className="flex flex-col h-full bg-[#0d1117] text-white overflow-hidden">
       <AlertBanner />
@@ -224,7 +359,6 @@ export default function Dashboard() {
         <div className="flex items-center gap-3 mb-2">
           <span className="text-xs text-gray-500 uppercase tracking-widest">Overview</span>
           <div className="flex-1" />
-          {/* Symbol search */}
           <SymbolSearch value={activeSymbol} onChange={setActiveSymbol} />
         </div>
         <PortfolioSummary portfolio={portfolio} />
@@ -248,53 +382,61 @@ export default function Dashboard() {
         {/* ── Center: Chart ── */}
         <div className="flex-1 flex flex-col min-w-0">
           {/* Quote header */}
-          <div className="flex items-center gap-3 px-4 py-2 border-b border-border flex-shrink-0 flex-wrap">
-            <div className="flex items-baseline gap-2">
-              <span className="text-xl font-bold tracking-tight">{activeSymbol}</span>
-              {quote?.price != null && (
-                <span className="text-2xl font-mono font-semibold">{fmt.currency(quote.price)}</span>
-              )}
-              {quote?.change_pct != null && (
-                <span className={clsx("text-sm font-semibold", pnlColor(quote.change_pct))}>
-                  {quote.change != null && (quote.change >= 0 ? "+" : "")}{fmt.currency(quote.change ?? 0)}
-                  {" "}({fmt.pct(quote.change_pct)})
-                </span>
-              )}
-            </div>
+          <div className="px-4 py-2 border-b border-border flex-shrink-0">
+            {/* Row 1: price + controls */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-baseline gap-2">
+                <span className="text-xl font-bold tracking-tight">{activeSymbol}</span>
+                {quote?.price != null && (
+                  <span className="text-2xl font-mono font-semibold">{fmt.currency(quote.price)}</span>
+                )}
+                {quote?.change_pct != null && (
+                  <span className={clsx("text-sm font-semibold", pnlColor(quote.change_pct))}>
+                    {quote.change != null && (quote.change >= 0 ? "+" : "")}{fmt.currency(quote.change ?? 0)}
+                    {" "}({fmt.pct(quote.change_pct)})
+                  </span>
+                )}
+              </div>
 
-            <div className="flex gap-3 text-xs text-gray-400 border-l border-border pl-3">
-              {([["O", quote?.open], ["H", quote?.high], ["L", quote?.low], ["P.C", quote?.prev_close]] as const).map(
-                ([label, val]) => val != null ? (
-                  <span key={label}><span className="text-gray-600">{label} </span>{fmt.currency(Number(val))}</span>
-                ) : null
-              )}
-              {quote?.volume != null && (
-                <span><span className="text-gray-600">Vol </span>{fmt.num(quote.volume)}</span>
-              )}
-            </div>
+              <div className="flex gap-3 text-xs text-gray-400 border-l border-border pl-3">
+                {([["O", quote?.open], ["H", quote?.high], ["L", quote?.low], ["P.C", quote?.prev_close]] as const).map(
+                  ([label, val]) => val != null ? (
+                    <span key={label}><span className="text-gray-600">{label} </span>{fmt.currency(Number(val))}</span>
+                  ) : null
+                )}
+                {quote?.volume != null && (
+                  <span><span className="text-gray-600">Vol </span>{fmt.num(quote.volume)}</span>
+                )}
+              </div>
 
-            {/* Controls: chart type + timeframe */}
-            <div className="flex items-center gap-2 ml-auto flex-wrap">
-              {/* Chart type */}
-              <select
-                value={chartType}
-                onChange={(e) => setChartType(e.target.value as "candlestick" | "line")}
-                className="bg-surface border border-border rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-brand"
-              >
-                <option value="candlestick">Candlestick</option>
-                <option value="line">Line</option>
-              </select>
+              <div className="flex items-center gap-2 ml-auto flex-wrap">
+                <select
+                  value={chartType}
+                  onChange={(e) => setChartType(e.target.value as "candlestick" | "line")}
+                  className="bg-surface border border-border rounded px-2 py-1 text-xs text-gray-300 focus:outline-none focus:border-brand"
+                >
+                  <option value="candlestick">Candlestick</option>
+                  <option value="line">Line</option>
+                </select>
 
-              <div className="flex gap-1">
-                {TIMEFRAMES.map((tf) => (
-                  <button key={tf} onClick={() => setTimeframe(tf)}
-                    className={clsx("px-2.5 py-1 rounded text-xs font-medium transition-colors",
-                      timeframe === tf ? "bg-brand text-white" : "text-gray-400 hover:bg-border hover:text-white")}>
-                    {tf.toUpperCase()}
-                  </button>
-                ))}
+                <div className="flex gap-1">
+                  {TIMEFRAMES.map((tf) => (
+                    <button key={tf} onClick={() => setTimeframe(tf)}
+                      className={clsx("px-2.5 py-1 rounded text-xs font-medium transition-colors",
+                        timeframe === tf ? "bg-brand text-white" : "text-gray-400 hover:bg-border hover:text-white")}>
+                      {tf.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
+
+            {/* Row 2: indicator strip */}
+            {indicatorConfigs.length > 0 && (
+              <div className="mt-1.5 pt-1.5 border-t border-border/40">
+                <IndicatorStrip indicators={indicatorConfigs} intraday={isIntraday} />
+              </div>
+            )}
           </div>
 
           {/* Chart */}
@@ -316,6 +458,7 @@ export default function Dashboard() {
                 chartType={chartType}
                 intraday={isIntraday}
                 visiblePeriod={timeframe}
+                indicatorConfigs={indicatorConfigs}
               />
             )}
           </div>
