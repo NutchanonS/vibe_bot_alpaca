@@ -63,6 +63,19 @@ docker compose logs -f
 
 # Run strategy tests in container
 docker compose run --rm strategy python -m pytest tests -v
+
+# Start with production overrides
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+```
+
+If you use the `Makefile`, equivalent shortcuts are available:
+
+```bash
+make up
+make down
+make logs
+make test
+make prod-up
 ```
 
 ## Environment Variables
@@ -96,6 +109,7 @@ All strategy signals are executed through `strategy/broker/order_manager.py`.
 - Backend routes are under `backend/src/routes/`.
 - Frontend pages are under `frontend/src/pages/`.
 - Strategy scheduling entrypoint: `strategy/main.py`.
+- Health endpoint: `GET /health` on backend.
 
 ## License
 
