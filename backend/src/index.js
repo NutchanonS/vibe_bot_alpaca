@@ -51,6 +51,7 @@ app.use("/api/assets", authMiddleware, require("./routes/assets"));
 app.use("/api/indicators", authMiddleware, require("./routes/indicators"));
 app.use("/api/backtest", authMiddleware, require("./routes/backtest"));
 app.use("/api/news",    authMiddleware, require("./routes/news"));
+app.use("/api/agent",   authMiddleware, require("./routes/agent"));
 
 // Start WebSocket relay
 startRelay(io);

@@ -122,6 +122,20 @@ class TestNewsFetcherAgent:
         assert len(result["news_snapshots"]) == 2
 
     @patch("agents.news_fetcher_agent.requests.get")
+    def test_run_accepts_state_overrides(self, mock_get):
+        mock_get.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {"news": [RAW_ARTICLE]},
+            raise_for_status=lambda: None,
+        )
+        agent = _make_agent(lookback_hours=24, limit_per_symbol=10)
+
+        result = agent.run({"symbols": ["AAPL"], "lookback_hours": 6, "limit_per_symbol": 1})
+
+        assert len(result["news_snapshots"]) == 1
+        assert len(result["news_snapshots"][0].articles) == 1
+
+    @patch("agents.news_fetcher_agent.requests.get")
     def test_limit_per_symbol_respected(self, mock_get):
         # Return 5 articles all tagged to AAPL
         many = [dict(RAW_ARTICLE, id=i, symbols=["AAPL"]) for i in range(10)]

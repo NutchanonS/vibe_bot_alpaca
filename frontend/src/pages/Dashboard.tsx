@@ -35,7 +35,26 @@ interface IndicatorsMap { [id: string]: Omit<IndicatorConfig, "id">; }
 interface NewsArticle {
   id: number; headline: string; summary: string; source: string;
   author: string; url: string; symbols: string[]; created_at: string;
-  ago: string; image: string | null;
+  ago: string; image: string | null; sentiment?: number | null;
+}
+interface AgentQASummary {
+  approved_symbols?: string[];
+  degraded_symbols?: string[];
+  blocked_symbols?: string[];
+  circuit_break?: boolean;
+  report?: string;
+}
+interface AgentStatus {
+  status: string;
+  trigger?: string;
+  last_run_at?: string | null;
+  message?: string;
+  error?: string;
+  symbols?: string[];
+  qa?: AgentQASummary;
+  news?: { snapshots?: { symbol: string; articles: number }[] };
+  news_sentiments?: Record<string, { overall_sentiment?: number; confidence?: number; summary?: string; analysis_status?: string }>;
+  signal_contexts?: Record<string, { supporting_signals?: string[]; conflicting_signals?: string[] }>;
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -179,7 +198,7 @@ function IndicatorStrip({ indicators, intraday }: { indicators: IndicatorConfig[
 function NewsFeed({ symbol }: { symbol: string }) {
   const { data, isLoading, isError, refetch } = useQuery<{ news: NewsArticle[]; count: number }>({
     queryKey: ["news", symbol],
-    queryFn: () => api.get(`/news?symbols=${symbol}&limit=20&hours=48`).then(r => r.data),
+    queryFn: () => api.get(`/news?symbols=${symbol}&limit=20&hours=24`).then(r => r.data),
     refetchInterval: 5 * 60_000,
     staleTime: 2 * 60_000,
   });
@@ -193,7 +212,7 @@ function NewsFeed({ symbol }: { symbol: string }) {
     <div className="h-full overflow-y-auto">
       <div className="flex items-center justify-between px-3 py-2 border-b border-border/60 sticky top-0 bg-[#0d1117]">
         <span className="text-[10px] text-gray-500 uppercase tracking-widest">
-          {articles.length} articles · {symbol} · last 48h
+          {articles.length} articles · {symbol} · last 24h
         </span>
         <button onClick={() => refetch()} className="text-[10px] text-gray-600 hover:text-brand transition-colors">
           ↻ Refresh
@@ -233,6 +252,9 @@ function NewsFeed({ symbol }: { symbol: string }) {
               <div className="flex items-center gap-2 mt-1 flex-wrap">
                 <span className="text-[10px] text-brand font-medium">{article.source}</span>
                 <span className="text-[10px] text-gray-600">{article.ago}</span>
+                {typeof article.sentiment === "number" && (
+                  <NewsSentimentBadge score={article.sentiment} />
+                )}
                 {article.symbols.slice(0, 4).map(sym => (
                   <span key={sym} className={clsx(
                     "text-[9px] px-1 py-0.5 rounded font-mono",
@@ -249,6 +271,132 @@ function NewsFeed({ symbol }: { symbol: string }) {
               )}
             </div>
           </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function NewsSentimentBadge({ score }: { score: number }) {
+  if (score > 0.2) {
+    return (
+      <span className="text-[9px] px-1 py-0.5 rounded bg-gain/20 text-gain font-semibold">
+        Bullish
+      </span>
+    );
+  }
+  if (score < -0.2) {
+    return (
+      <span className="text-[9px] px-1 py-0.5 rounded bg-loss/20 text-loss font-semibold">
+        Bearish
+      </span>
+    );
+  }
+  return (
+    <span className="text-[9px] px-1 py-0.5 rounded bg-border text-gray-300 font-semibold">
+      Neutral
+    </span>
+  );
+}
+
+function AgentMonitor({ activeSymbol }: { activeSymbol: string }) {
+  const qc = useQueryClient();
+  const { data, isLoading, isError } = useQuery<AgentStatus>({
+    queryKey: ["agent-status"],
+    queryFn: () => api.get("/agent/status").then(r => r.data),
+    refetchInterval: 10_000,
+  });
+
+  const runMut = useMutation({
+    mutationFn: () => api.post("/agent/run", { symbols: [activeSymbol] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["agent-status"] }),
+  });
+
+  if (isLoading) return <p className="text-xs text-gray-500 p-3">Loading agent status…</p>;
+  if (isError) return <p className="text-xs text-loss p-3">Failed to load agent status.</p>;
+  if (!data) return <p className="text-xs text-gray-500 p-3">No agent status available.</p>;
+
+  const statusTone = data.status === "ok"
+    ? "bg-gain/20 text-gain"
+    : data.status === "error"
+      ? "bg-loss/20 text-loss"
+      : data.status === "queued" || data.status === "running"
+        ? "bg-yellow-400/20 text-yellow-300"
+        : "bg-border text-gray-300";
+  const statusLabel = data.status === "queued" || data.status === "running" ? "pending" : data.status;
+
+  const qa = data.qa ?? {};
+  const sentiments = data.news_sentiments ?? {};
+  const contexts = data.signal_contexts ?? {};
+
+  return (
+    <div className="p-3 space-y-3 text-xs">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className={clsx(
+            "px-2 py-0.5 rounded font-semibold uppercase text-[10px]",
+            statusTone
+          )}>
+            {statusLabel}
+          </span>
+          <span className="text-gray-500">Trigger: {data.trigger ?? "-"}</span>
+          <span className="text-gray-500">Last: {data.last_run_at ? new Date(data.last_run_at).toLocaleTimeString() : "-"}</span>
+        </div>
+        <button
+          onClick={() => runMut.mutate()}
+          disabled={runMut.isPending}
+          className="text-[10px] px-2 py-1 rounded border border-border text-gray-300 hover:text-white hover:border-brand disabled:opacity-60"
+        >
+          {runMut.isPending ? "Queueing…" : `Run Now (${activeSymbol})`}
+        </button>
+      </div>
+
+      {data.error && <p className="text-loss">{data.error}</p>}
+      {data.message && <p className="text-gray-500">{data.message}</p>}
+
+      <div className="grid grid-cols-4 gap-2">
+        <div className="bg-surface border border-border rounded px-2 py-1.5">
+          <p className="text-[10px] text-gray-500 uppercase">Approved</p>
+          <p className="font-semibold text-gain">{qa.approved_symbols?.length ?? 0}</p>
+        </div>
+        <div className="bg-surface border border-border rounded px-2 py-1.5">
+          <p className="text-[10px] text-gray-500 uppercase">Degraded</p>
+          <p className="font-semibold text-yellow-400">{qa.degraded_symbols?.length ?? 0}</p>
+        </div>
+        <div className="bg-surface border border-border rounded px-2 py-1.5">
+          <p className="text-[10px] text-gray-500 uppercase">Blocked</p>
+          <p className="font-semibold text-loss">{qa.blocked_symbols?.length ?? 0}</p>
+        </div>
+        <div className="bg-surface border border-border rounded px-2 py-1.5">
+          <p className="text-[10px] text-gray-500 uppercase">Circuit</p>
+          <p className={clsx("font-semibold", qa.circuit_break ? "text-loss" : "text-gain")}>{qa.circuit_break ? "ON" : "OFF"}</p>
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        {Object.keys(sentiments).length === 0 && <p className="text-gray-500">No sentiment output yet.</p>}
+        {Object.entries(sentiments).map(([sym, s]) => (
+          <div key={sym} className="flex items-center justify-between gap-2 border border-border/60 rounded px-2 py-1.5 bg-surface/40">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="font-mono text-brand">{sym}</span>
+              {typeof s.overall_sentiment === "number" && <NewsSentimentBadge score={s.overall_sentiment} />}
+              <span className="text-gray-500">conf {typeof s.confidence === "number" ? `${Math.round(s.confidence * 100)}%` : "-"}</span>
+              {s.analysis_status === "openai_failed" && (
+                <span className="text-[9px] px-1 py-0.5 rounded bg-loss/20 text-loss font-semibold">OpenAI failed</span>
+              )}
+            </div>
+            <div className="text-gray-500 truncate">{s.summary ?? ""}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-1">
+        {Object.entries(contexts).map(([sym, ctx]) => (
+          <div key={`ctx-${sym}`} className="text-gray-400">
+            <span className="font-mono text-gray-300">{sym}</span>
+            {ctx.supporting_signals?.length ? ` | + ${ctx.supporting_signals.join(", ")}` : ""}
+            {ctx.conflicting_signals?.length ? ` | - ${ctx.conflicting_signals.join(", ")}` : ""}
+          </div>
         ))}
       </div>
     </div>
@@ -385,8 +533,12 @@ export default function Dashboard() {
   const [timeframe, setTimeframe] = useState<(typeof TIMEFRAMES)[number]>("3m");
   const [signals, setSignals] = useState<SignalLog[]>([]);
   const [watchlist] = useState(["SPY", "AAPL", "TSLA", "NVDA", "QQQ", "MSFT"]);
-  const [activeTab, setActiveTab] = useState<"positions" | "orders" | "activity" | "news">("positions");
+  const [activeTab, setActiveTab] = useState<"positions" | "orders" | "activity" | "news" | "agents">("positions");
   const [chartType, setChartType] = useState<"candlestick" | "line">("candlestick");
+  const [bottomPanelHeight, setBottomPanelHeight] = useState(260);
+  const bottomResizeActiveRef = useRef(false);
+  const bottomResizeStartYRef = useRef(0);
+  const bottomResizeStartHeightRef = useRef(260);
 
   const { data: portfolio } = useQuery<Portfolio>({
     queryKey: ["portfolio"],
@@ -428,6 +580,33 @@ export default function Dashboard() {
     });
     return () => { socket.off("signal_fired"); socket.off("quote"); };
   }, [activeSymbol]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!bottomResizeActiveRef.current) return;
+      const delta = bottomResizeStartYRef.current - e.clientY;
+      const next = Math.max(180, Math.min(420, bottomResizeStartHeightRef.current + delta));
+      setBottomPanelHeight(next);
+    };
+
+    const onUp = () => {
+      bottomResizeActiveRef.current = false;
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
+  const startBottomResize = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    bottomResizeActiveRef.current = true;
+    bottomResizeStartYRef.current = e.clientY;
+    bottomResizeStartHeightRef.current = bottomPanelHeight;
+  };
 
   const cash = Number(portfolio?.cash ?? 0);
   const buyingPower = Number(portfolio?.buying_power ?? 0);
@@ -550,7 +729,14 @@ export default function Dashboard() {
           </div>
 
           {/* ── Bottom tabs: Positions / Orders / Activity / News ── */}
-          <div className="border-t border-border flex-shrink-0" style={{ maxHeight: "240px" }}>
+          <div className="border-t border-border flex-shrink-0" style={{ height: `${bottomPanelHeight}px` }}>
+            <div
+              onMouseDown={startBottomResize}
+              className="h-3 border-b border-border/60 bg-panel/80 cursor-row-resize flex items-center justify-center text-[9px] text-gray-600 select-none"
+              title="Drag to resize"
+            >
+              <span>drag edge to resize</span>
+            </div>
             <div className="flex border-b border-border">
               <button onClick={() => setActiveTab("positions")}
                 className={clsx("px-4 py-2 text-xs font-medium transition-colors",
@@ -573,9 +759,14 @@ export default function Dashboard() {
                 News
                 <span className="text-[9px] bg-brand/30 text-brand px-1 py-0.5 rounded leading-none">live</span>
               </button>
+              <button onClick={() => setActiveTab("agents")}
+                className={clsx("px-4 py-2 text-xs font-medium transition-colors",
+                  activeTab === "agents" ? "border-b-2 border-brand text-white" : "text-gray-500 hover:text-gray-300")}>
+                Agents
+              </button>
             </div>
 
-            <div className="overflow-auto" style={{ maxHeight: "196px" }}>
+            <div className="overflow-auto" style={{ maxHeight: `${Math.max(120, bottomPanelHeight - 48)}px` }}>
               {activeTab === "positions" && (
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-[#0d1117]">
@@ -653,6 +844,7 @@ export default function Dashboard() {
               )}
 
               {activeTab === "news" && <NewsFeed symbol={activeSymbol} />}
+              {activeTab === "agents" && <AgentMonitor activeSymbol={activeSymbol} />}
             </div>
           </div>
         </div>

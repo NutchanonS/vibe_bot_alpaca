@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import redis
 import json
+from datetime import datetime, timezone
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -35,6 +36,14 @@ _strategies = {
     name: get_strategy(name, WATCHLIST)
     for name in settings.default_strategies
 }
+
+try:
+    from agents.orchestrator import AgentOrchestrator
+
+    _agent_orchestrator = AgentOrchestrator()
+except Exception as exc:
+    _agent_orchestrator = None
+    log.warning("Agent orchestrator unavailable: %s", exc)
 
 
 def _execute_signal(signal) -> None:
@@ -129,6 +138,65 @@ def daily_reset() -> None:
     log.info("Daily risk counters reset.")
 
 
+def _agent_status_error_payload(trigger: str, err: Exception) -> dict:
+    return {
+        "status": "error",
+        "trigger": trigger,
+        "last_run_at": datetime.now(timezone.utc).isoformat(),
+        "error": str(err),
+    }
+
+
+def _set_agent_status(payload: dict) -> None:
+    _redis.set("agent:status", json.dumps(payload), ex=3600)
+
+
+def run_agent_pipeline(trigger: str = "scheduled", symbols: list[str] | None = None) -> None:
+    symbols = symbols or WATCHLIST
+    if _agent_orchestrator is None:
+        payload = {
+            "status": "disabled",
+            "trigger": trigger,
+            "last_run_at": datetime.now(timezone.utc).isoformat(),
+            "error": "Agent orchestrator not available",
+        }
+        _set_agent_status(payload)
+        return
+
+    try:
+        _set_agent_status(
+            {
+                "status": "running",
+                "trigger": trigger,
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "symbols": symbols,
+            }
+        )
+        _, status = _agent_orchestrator.run(symbols=symbols, trigger=trigger)
+        _set_agent_status(status)
+        log.info("Agent pipeline completed (%s) for %s", trigger, symbols)
+    except Exception as exc:
+        payload = _agent_status_error_payload(trigger, exc)
+        _set_agent_status(payload)
+        log.error("Agent pipeline failed (%s): %s", trigger, exc)
+
+
+def poll_agent_run_requests() -> None:
+    try:
+        raw = _redis.get("agent:run_request")
+        if not raw:
+            return
+
+        _redis.delete("agent:run_request")
+        req = json.loads(raw)
+        symbols = req.get("symbols") if isinstance(req, dict) else None
+        if not isinstance(symbols, list) or not symbols:
+            symbols = WATCHLIST
+        run_agent_pipeline(trigger="manual", symbols=[str(s).upper() for s in symbols])
+    except Exception as exc:
+        log.error("Failed to poll agent run request: %s", exc)
+
+
 def main() -> None:
     log.info("Starting Alpaca Trading Bot in %s mode", settings.mode)
 
@@ -136,6 +204,12 @@ def main() -> None:
 
     # Portfolio cache every minute
     scheduler.add_job(cache_portfolio_snapshot, IntervalTrigger(minutes=1), id="portfolio_cache")
+
+    # Agentic pipeline every 5 minutes (status available in dashboard)
+    scheduler.add_job(run_agent_pipeline, IntervalTrigger(minutes=5), id="agent_pipeline")
+
+    # Manual trigger poll from backend /api/agent/run
+    scheduler.add_job(poll_agent_run_requests, IntervalTrigger(seconds=15), id="agent_run_poll")
 
     # VWAP strategy every 5 minutes (intraday only)
     scheduler.add_job(run_vwap_strategy, IntervalTrigger(minutes=5), id="vwap")

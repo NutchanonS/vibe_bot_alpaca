@@ -48,6 +48,7 @@ router.get("/", async (req, res) => {
       url:        a.url       || "",
       symbols:    a.symbols   || [],
       created_at: a.created_at,
+      sentiment:  typeof a.sentiment === "number" ? a.sentiment : null,
       ago:        relativeTime(a.created_at),
       image:      a.images?.[0]?.url || null,
     }));

@@ -60,23 +60,37 @@ class NewsFetcherAgent(BaseAgent):
 
     def run(self, state: dict) -> dict:
         symbols: list[str] = state.get("symbols", [])
-        snapshots = self.fetch(symbols)
+        lookback_hours = int(state.get("lookback_hours", self.lookback_hours))
+        limit_per_symbol = int(state.get("limit_per_symbol", self.limit_per_symbol))
+        snapshots = self.fetch(
+            symbols,
+            lookback_hours=lookback_hours,
+            limit_per_symbol=limit_per_symbol,
+        )
         out = dict(state)
         out["news_snapshots"] = snapshots
         return out
 
     # ── Public helper (also used by tests / backend) ──────────────────────────
 
-    def fetch(self, symbols: list[str]) -> list[NewsSnapshot]:
+    def fetch(
+        self,
+        symbols: list[str],
+        lookback_hours: int | None = None,
+        limit_per_symbol: int | None = None,
+    ) -> list[NewsSnapshot]:
         """Fetch news for all symbols in a single API call, then group by symbol."""
         if not symbols:
             return []
 
+        lookback = int(lookback_hours if lookback_hours is not None else self.lookback_hours)
+        per_symbol_limit = int(limit_per_symbol if limit_per_symbol is not None else self.limit_per_symbol)
+
         start_iso = (
-            datetime.now(timezone.utc) - timedelta(hours=self.lookback_hours)
+            datetime.now(timezone.utc) - timedelta(hours=lookback)
         ).isoformat()
 
-        raw_articles = self._call_api(symbols, start_iso)
+        raw_articles = self._call_api(symbols, start_iso, per_symbol_limit)
 
         # Group by symbol — one article can appear under multiple symbols
         by_symbol: dict[str, list[NewsArticle]] = {sym: [] for sym in symbols}
@@ -89,19 +103,19 @@ class NewsFetcherAgent(BaseAgent):
         return [
             NewsSnapshot(
                 symbol=sym,
-                articles=by_symbol[sym][: self.limit_per_symbol],
+                articles=by_symbol[sym][:per_symbol_limit],
             )
             for sym in symbols
         ]
 
     # ── Private ───────────────────────────────────────────────────────────────
 
-    def _call_api(self, symbols: list[str], start_iso: str) -> list[dict]:
+    def _call_api(self, symbols: list[str], start_iso: str, per_symbol_limit: int) -> list[dict]:
         """Call Alpaca News API; returns raw article dicts. Never raises."""
         params: dict = {
             "symbols":         ",".join(symbols),
             "start":           start_iso,
-            "limit":           min(self.limit_per_symbol * len(symbols), 50),
+            "limit":           min(per_symbol_limit * len(symbols), 50),
             "sort":            "desc",
             "include_content": "false",
         }
