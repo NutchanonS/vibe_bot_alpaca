@@ -5,6 +5,7 @@ import Trading    from "./pages/Trading";
 import Strategies from "./pages/Strategies";
 import Portfolio  from "./pages/Portfolio";
 import History    from "./pages/History";
+import Scanner    from "./pages/Scanner";
 import Login      from "./pages/Login";
 import clsx from "clsx";
 
@@ -28,6 +29,10 @@ const NAV_LINKS = [
   {
     to: "/app/history", end: false, label: "History",
     icon: <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd"/></svg>,
+  },
+  {
+    to: "/app/scanner", end: false, label: "Waterfall Scanner",
+    icon: <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path d="M9 9a2 2 0 114 0 2 2 0 01-4 0z"/><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a4 4 0 00-3.446 6.032l-2.261 2.26a1 1 0 101.414 1.415l2.261-2.261A4 4 0 1011 5z" clipRule="evenodd"/></svg>,
   },
 ];
 
@@ -139,6 +144,7 @@ export default function App() {
                     <Route path="/strategies" element={<Strategies />} />
                     <Route path="/portfolio"  element={<Portfolio />}  />
                     <Route path="/history"    element={<History />}    />
+                    <Route path="/scanner"   element={<Scanner />}    />
                     <Route path="*"           element={<Navigate to="/app" replace />} />
                   </Routes>
                 </main>

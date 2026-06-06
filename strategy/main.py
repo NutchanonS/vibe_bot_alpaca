@@ -45,6 +45,14 @@ except Exception as exc:
     _agent_orchestrator = None
     log.warning("Agent orchestrator unavailable: %s", exc)
 
+try:
+    from scanner.scan_pipeline import ScanPipeline
+
+    _scan_pipeline = ScanPipeline(orchestrator=_agent_orchestrator)
+except Exception as exc:
+    _scan_pipeline = None
+    log.warning("Scan pipeline unavailable: %s", exc)
+
 
 def _execute_signal(signal) -> None:
     if not signal.is_actionable():
@@ -181,6 +189,58 @@ def run_agent_pipeline(trigger: str = "scheduled", symbols: list[str] | None = N
         log.error("Agent pipeline failed (%s): %s", trigger, exc)
 
 
+def poll_scanner_run_requests() -> None:
+    try:
+        raw = _redis.get("scanner:run_request")
+        if not raw:
+            return
+
+        _redis.delete("scanner:run_request")
+        req = json.loads(raw) if raw else {}
+
+        universe_name = req.get("universe") if isinstance(req, dict) else None
+        stage1_top_n  = max(5, min(int(req.get("stage1_top_n", 20)), 9999))
+        stage2_top_n  = max(3, min(int(req.get("stage2_top_n", 10)), 9999))
+
+        if _scan_pipeline is None:
+            _redis.set("scanner:status", json.dumps({
+                "status": "error",
+                "error": "Scan pipeline not available.",
+            }), ex=3600)
+            return
+
+        _redis.set("scanner:status", json.dumps({
+            "status":       "running",
+            "started_at":   datetime.now(timezone.utc).isoformat(),
+            "stage1_top_n": stage1_top_n,
+            "stage2_top_n": stage2_top_n,
+            "universe":     universe_name or "default",
+        }), ex=3600)
+
+        results = _scan_pipeline.run(
+            universe_name=universe_name,
+            stage1_top_n=stage1_top_n,
+            stage2_top_n=stage2_top_n,
+        )
+        _redis.set("scanner:results", json.dumps(results), ex=3600)
+        _redis.set("scanner:status", json.dumps({
+            "status":           "ok",
+            "completed_at":     results.get("completed_at"),
+            "universe_size":    results.get("universe_size"),
+            "stage1_count":     results.get("stage1_count"),
+            "stage2_count":     results.get("stage2_count"),
+            "candidates_found": len(results.get("ranked", [])),
+        }), ex=3600)
+        log.info("Waterfall scan completed — %d ranked candidates", len(results.get("ranked", [])))
+
+    except Exception as exc:
+        log.error("Scan pipeline failed: %s", exc)
+        _redis.set("scanner:status", json.dumps({
+            "status": "error",
+            "error":  str(exc),
+        }), ex=3600)
+
+
 def poll_agent_run_requests() -> None:
     try:
         raw = _redis.get("agent:run_request")
@@ -209,7 +269,10 @@ def main() -> None:
     scheduler.add_job(run_agent_pipeline, IntervalTrigger(minutes=5), id="agent_pipeline")
 
     # Manual trigger poll from backend /api/agent/run
-    scheduler.add_job(poll_agent_run_requests, IntervalTrigger(seconds=15), id="agent_run_poll")
+    scheduler.add_job(poll_agent_run_requests,  IntervalTrigger(seconds=15), id="agent_run_poll")
+
+    # Scanner trigger poll from backend /api/scanner/run
+    scheduler.add_job(poll_scanner_run_requests, IntervalTrigger(seconds=15), id="scanner_run_poll")
 
     # VWAP strategy every 5 minutes (intraday only)
     scheduler.add_job(run_vwap_strategy, IntervalTrigger(minutes=5), id="vwap")

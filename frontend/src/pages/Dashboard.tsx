@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/client";
 import PriceChart from "../components/PriceChart";
@@ -88,6 +89,26 @@ interface AgentStatus {
     reasoning?: string;
     rejection_reason?: string | null;
   }>;
+}
+
+interface ScannerRow {
+  symbol: string;
+  direction: string;
+  confidence: number;
+  combined_score: number;
+  stage1_score: number;
+  deep_score: number;
+  bb_squeeze: boolean;
+  volume_surge: boolean;
+  relative_strength_vs_spy: number | null;
+  trend_aligned: boolean | null;
+}
+interface ScannerResults {
+  status: string;
+  ranked?: ScannerRow[];
+  stage1_count?: number;
+  stage2_count?: number;
+  completed_at?: string;
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -344,11 +365,28 @@ function useAgentStatus() {
 
 // ── Pipeline overview panel ────────────────────────────────────────────────────
 
+const DEFAULT_WATCHLIST = ["SPY", "AAPL", "TSLA", "NVDA", "QQQ"];
+
 function AgentPipelinePanel({ activeSymbol }: { activeSymbol: string }) {
   const qc = useQueryClient();
   const { data, isLoading, isError } = useAgentStatus();
+  const [symInput, setSymInput] = useState("");
+  const [selectedSymbols, setSelectedSymbols] = useState<string[]>(() =>
+    DEFAULT_WATCHLIST.includes(activeSymbol) ? DEFAULT_WATCHLIST : [activeSymbol, ...DEFAULT_WATCHLIST]
+  );
+
+  const addSymbol = () => {
+    const sym = symInput.trim().toUpperCase();
+    if (sym && !selectedSymbols.includes(sym)) {
+      setSelectedSymbols(s => [...s, sym]);
+    }
+    setSymInput("");
+  };
+
+  const removeSymbol = (sym: string) => setSelectedSymbols(s => s.filter(x => x !== sym));
+
   const runMut = useMutation({
-    mutationFn: () => api.post("/agent/run", { symbols: [activeSymbol] }),
+    mutationFn: () => api.post("/agent/run", { symbols: selectedSymbols }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["agent-status"] }),
   });
 
@@ -368,24 +406,98 @@ function AgentPipelinePanel({ activeSymbol }: { activeSymbol: string }) {
 
   return (
     <div className="p-3 space-y-3 text-xs">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className={clsx("px-2 py-0.5 rounded font-semibold uppercase text-[10px]", statusTone)}>
-            {statusLabel}
+
+      {/* Status row */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className={clsx("px-2 py-0.5 rounded font-semibold uppercase text-[10px]", statusTone)}>
+          {statusLabel}
+        </span>
+        <span className="text-gray-500">Trigger: {data.trigger ?? "-"}</span>
+        <span className="text-gray-500">Last: {data.last_run_at ? new Date(data.last_run_at).toLocaleTimeString() : "-"}</span>
+        {data.symbols && data.symbols.length > 0 && (
+          <span className="text-gray-600">
+            Ran: {data.symbols.join(", ")}
           </span>
-          <span className="text-gray-500">Trigger: {data.trigger ?? "-"}</span>
-          <span className="text-gray-500">Last: {data.last_run_at ? new Date(data.last_run_at).toLocaleTimeString() : "-"}</span>
-        </div>
-        <button
-          onClick={() => runMut.mutate()}
-          disabled={runMut.isPending}
-          className="text-[10px] px-2 py-1 rounded border border-border text-gray-300 hover:text-white hover:border-brand disabled:opacity-60"
-        >
-          {runMut.isPending ? "Queueing…" : `Run Now (${activeSymbol})`}
-        </button>
+        )}
       </div>
       {data.error   && <p className="text-loss">{data.error}</p>}
       {data.message && <p className="text-gray-500">{data.message}</p>}
+
+      {/* Symbol picker */}
+      <div className="border border-border rounded-md p-2 space-y-2 bg-surface/40">
+        <p className="text-[10px] uppercase tracking-widest text-gray-500">Symbols to analyze</p>
+
+        {/* Tag list */}
+        <div className="flex flex-wrap gap-1.5 min-h-[24px]">
+          {selectedSymbols.map(sym => (
+            <span key={sym} className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-brand/20 border border-brand/30 text-brand text-[10px] font-mono font-semibold">
+              {sym}
+              <button
+                onClick={() => removeSymbol(sym)}
+                className="text-brand/50 hover:text-brand leading-none"
+                title={`Remove ${sym}`}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          {selectedSymbols.length === 0 && (
+            <span className="text-gray-600 text-[10px] italic">No symbols selected</span>
+          )}
+        </div>
+
+        {/* Add input + presets */}
+        <div className="flex gap-1.5">
+          <input
+            value={symInput}
+            onChange={e => setSymInput(e.target.value.toUpperCase())}
+            onKeyDown={e => { if (e.key === "Enter") addSymbol(); }}
+            placeholder="Add symbol…"
+            maxLength={10}
+            className="flex-1 bg-[#0d1117] border border-border rounded px-2 py-1 text-[11px] text-gray-200 uppercase font-mono focus:outline-none focus:border-brand"
+          />
+          <button
+            onClick={addSymbol}
+            disabled={!symInput.trim()}
+            className="px-2 py-1 rounded border border-border text-gray-300 hover:text-white hover:border-brand disabled:opacity-40 text-[10px]"
+          >
+            Add
+          </button>
+        </div>
+
+        {/* Quick-add preset chips */}
+        <div className="flex flex-wrap gap-1">
+          <span className="text-[9px] text-gray-600 self-center mr-0.5">Quick add:</span>
+          {["SPY", "QQQ", "AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "META", "GOOGL"].map(sym => (
+            <button
+              key={sym}
+              onClick={() => { if (!selectedSymbols.includes(sym)) setSelectedSymbols(s => [...s, sym]); }}
+              disabled={selectedSymbols.includes(sym)}
+              className={clsx(
+                "text-[9px] px-1.5 py-0.5 rounded font-mono transition-colors",
+                selectedSymbols.includes(sym)
+                  ? "text-gray-600 bg-border/40 cursor-default"
+                  : "text-gray-400 bg-surface border border-border/60 hover:border-brand/60 hover:text-brand"
+              )}
+            >
+              {sym}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Run button */}
+      <button
+        onClick={() => runMut.mutate()}
+        disabled={runMut.isPending || selectedSymbols.length === 0}
+        className="w-full py-1.5 rounded border border-brand/50 bg-brand/10 text-brand text-[11px] font-semibold hover:bg-brand/20 disabled:opacity-50 transition-colors"
+      >
+        {runMut.isPending
+          ? "Queueing…"
+          : `Run Pipeline (${selectedSymbols.length} symbol${selectedSymbols.length !== 1 ? "s" : ""})`}
+      </button>
+
+      {/* QA cards */}
       <div className="grid grid-cols-4 gap-2">
         <div className="bg-surface border border-border rounded px-2 py-1.5">
           <p className="text-[10px] text-gray-500 uppercase">Approved</p>
@@ -902,7 +1014,17 @@ export default function Dashboard() {
     staleTime: 10_000,
   });
 
+  const { data: scannerData } = useQuery<ScannerResults>({
+    queryKey: ["scanner-results"],
+    queryFn: () => api.get("/scanner/results").then(r => r.data),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+
   const activeSignal = agentData?.signal_selections?.[activeSymbol];
+  const scannerRow = scannerData?.ranked?.find(r => r.symbol === activeSymbol);
+  const scannerBuyCount = scannerData?.ranked?.filter(r => r.direction === "BUY").length ?? 0;
+  const scannerSellCount = scannerData?.ranked?.filter(r => r.direction === "SELL").length ?? 0;
 
   useEffect(() => {
     const socket = getSocket();
@@ -981,6 +1103,29 @@ export default function Dashboard() {
         <PortfolioSummary portfolio={portfolio} signal={activeSignal} />
       </div>
 
+      {/* ── Scanner summary bar (Option A) ── */}
+      {(scannerBuyCount > 0 || scannerSellCount > 0) && (
+        <div className="px-4 py-1.5 border-b border-border bg-surface flex items-center gap-2 flex-shrink-0 text-xs">
+          <span className="text-gray-500 uppercase tracking-widest font-medium">Scanner</span>
+          {scannerBuyCount > 0 && (
+            <span className="bg-gain/20 text-gain border border-gain/30 px-2 py-0.5 rounded font-semibold">
+              {scannerBuyCount} BUY
+            </span>
+          )}
+          {scannerSellCount > 0 && (
+            <span className="bg-loss/20 text-loss border border-loss/30 px-2 py-0.5 rounded font-semibold">
+              {scannerSellCount} SELL
+            </span>
+          )}
+          <span className="text-gray-500">
+            signals found across {scannerData?.ranked?.length ?? 0} stocks
+          </span>
+          <Link to="/app/scanner" className="ml-auto text-brand hover:underline font-medium">
+            View Scanner →
+          </Link>
+        </div>
+      )}
+
       {/* ── Main layout ── */}
       <div className="flex flex-1 min-h-0">
 
@@ -1031,6 +1176,41 @@ export default function Dashboard() {
                       </span>
                     )}
                   </span>
+                )}
+                {/* Option C: scanner score + flags for active symbol */}
+                {scannerRow && (
+                  <>
+                    <span
+                      title={`Scanner score: Stage1 ${scannerRow.stage1_score}/7 + Stage2 ${scannerRow.deep_score}/6`}
+                      className="bg-surface text-gray-400 border border-border px-2 py-0.5 rounded text-[10px] font-mono cursor-default"
+                    >
+                      S{scannerRow.stage1_score}+{scannerRow.deep_score}
+                    </span>
+                    {scannerRow.bb_squeeze && (
+                      <span title="Bollinger Band squeeze — breakout pending"
+                        className="bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1.5 py-0.5 rounded text-[10px] font-semibold cursor-default">
+                        BB↗
+                      </span>
+                    )}
+                    {scannerRow.volume_surge && (
+                      <span title="Volume surge — current bar > 2× 20-bar avg"
+                        className="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-1.5 py-0.5 rounded text-[10px] font-semibold cursor-default">
+                        VOL↑
+                      </span>
+                    )}
+                    {scannerRow.relative_strength_vs_spy != null && scannerRow.relative_strength_vs_spy > 0 && (
+                      <span title={`Relative strength vs SPY: +${scannerRow.relative_strength_vs_spy.toFixed(2)}%`}
+                        className="bg-gain/20 text-gain border border-gain/30 px-1.5 py-0.5 rounded text-[10px] font-semibold cursor-default">
+                        RS+
+                      </span>
+                    )}
+                    {scannerRow.trend_aligned === true && (
+                      <span title="Trend aligned with EMA(50)"
+                        className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 px-1.5 py-0.5 rounded text-[10px] font-semibold cursor-default">
+                        TREND
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
 
