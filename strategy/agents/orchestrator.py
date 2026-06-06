@@ -12,7 +12,12 @@ from agents.data_qa_agent import DataQAAgent
 from agents.market_data_agent import MarketDataFetcherAgent
 from agents.news_analysis_agent import NewsAnalysisAgent
 from agents.news_fetcher_agent import NewsFetcherAgent
+from agents.risk_agent import RiskCapitalAllocationAgent
 from agents.signal_selection_agent import SignalSelectionAgent
+from broker.alpaca_client import alpaca
+from utils.logger import get_logger
+
+log = get_logger(__name__)
 
 
 class AgentState(TypedDict, total=False):
@@ -29,6 +34,8 @@ class AgentState(TypedDict, total=False):
     news_snapshots: list[Any]
     news_sentiments: dict[str, Any]
     signal_selections: dict[str, Any]
+    portfolio: dict[str, Any]
+    risk_allocations: dict[str, Any]
 
 
 class AgentOrchestrator:
@@ -40,6 +47,7 @@ class AgentOrchestrator:
         self.news_fetcher_agent = NewsFetcherAgent()
         self.news_analysis_agent = NewsAnalysisAgent()
         self.signal_selection_agent = SignalSelectionAgent()
+        self.risk_allocation_agent = RiskCapitalAllocationAgent()
         self._graph = self._build_graph()
 
     def _build_graph(self):
@@ -50,13 +58,17 @@ class AgentOrchestrator:
         graph.add_node("news_fetch", self.news_fetcher_agent.run)
         graph.add_node("news_analysis", self.news_analysis_agent.run)
         graph.add_node("signal_selection", self.signal_selection_agent.run)
+        graph.add_node("portfolio_snapshot", self._load_portfolio_snapshot)
+        graph.add_node("risk_allocation", self.risk_allocation_agent.run)
 
         graph.set_entry_point("market_data")
         graph.add_edge("market_data", "data_qa")
         graph.add_edge("data_qa", "news_fetch")
         graph.add_edge("news_fetch", "news_analysis")
         graph.add_edge("news_analysis", "signal_selection")
-        graph.add_edge("signal_selection", END)
+        graph.add_edge("signal_selection", "portfolio_snapshot")
+        graph.add_edge("portfolio_snapshot", "risk_allocation")
+        graph.add_edge("risk_allocation", END)
 
         return graph.compile()
 
@@ -80,6 +92,8 @@ class AgentOrchestrator:
         news_snapshots = state.get("news_snapshots", [])
         news_sentiments = state.get("news_sentiments", {})
         signal_selections = state.get("signal_selections", {})
+        risk_allocations = state.get("risk_allocations", {})
+        portfolio = state.get("portfolio", {})
 
         return {
             "status": "ok",
@@ -129,7 +143,50 @@ class AgentOrchestrator:
                 sym: self._to_plain(sel)
                 for sym, sel in signal_selections.items()
             },
+            "portfolio": {
+                "equity": portfolio.get("equity"),
+                "cash": portfolio.get("cash"),
+                "buying_power": portfolio.get("buying_power"),
+                "positions_count": len(portfolio.get("positions", [])) if isinstance(portfolio, dict) else 0,
+            },
+            "risk_allocations": {
+                sym: self._to_plain(alloc)
+                for sym, alloc in risk_allocations.items()
+            },
         }
+
+    @staticmethod
+    def _load_portfolio_snapshot(state: dict) -> dict:
+        out = dict(state)
+        try:
+            account = alpaca.get_account()
+            positions = alpaca.get_positions()
+            out["portfolio"] = {
+                "equity": float(getattr(account, "equity", 0.0) or 0.0),
+                "cash": float(getattr(account, "cash", 0.0) or 0.0),
+                "buying_power": float(getattr(account, "buying_power", 0.0) or 0.0),
+                "positions": [
+                    {
+                        "symbol": str(getattr(p, "symbol", "")),
+                        "qty": float(getattr(p, "qty", 0.0) or 0.0),
+                        "avg_entry_price": float(getattr(p, "avg_entry_price", 0.0) or 0.0),
+                        "current_price": float(getattr(p, "current_price", 0.0) or 0.0),
+                        "market_value": float(getattr(p, "market_value", 0.0) or 0.0),
+                        "unrealized_pl": float(getattr(p, "unrealized_pl", 0.0) or 0.0),
+                        "unrealized_plpc": float(getattr(p, "unrealized_plpc", 0.0) or 0.0),
+                    }
+                    for p in positions
+                ],
+            }
+        except Exception as exc:
+            log.error("Failed to load portfolio snapshot for risk allocation: %s", exc)
+            out["portfolio"] = {
+                "equity": 0.0,
+                "cash": 0.0,
+                "buying_power": 0.0,
+                "positions": [],
+            }
+        return out
 
     @staticmethod
     def _to_plain(value: Any) -> Any:

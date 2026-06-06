@@ -365,6 +365,23 @@ Keep system prompt constant — OpenAI caches repeated prefixes automatically.
 Add tests mocking the OpenAI response.
 ```
 
+### Step 4 Practical Wiring Notes (Implemented)
+
+- The orchestrator now includes a dedicated `portfolio_snapshot` node before `risk_allocation`.
+- Current graph order is:
+  - `market_data -> data_qa -> news_fetch -> news_analysis -> signal_selection -> portfolio_snapshot -> risk_allocation -> END`
+- `portfolio_snapshot` pulls live account/position data from Alpaca (`get_account()`, `get_positions()`) and injects normalized `state["portfolio"]`:
+  - `equity`, `cash`, `buying_power`, `positions[]`
+- On portfolio fetch failure, orchestrator logs the error and injects a safe zeroed fallback portfolio instead of crashing the cycle.
+- Agent status payload now includes:
+  - compact `portfolio` summary (`equity`, `cash`, `buying_power`, `positions_count`)
+  - `risk_allocations` output map
+- Guardrail behavior is deterministic and enforced as hard overrides after LLM output:
+  - max position size from config
+  - max add size for existing holdings
+  - max open positions for new BUY
+  - max single-trade risk from stop-loss distance
+
 ---
 
 ## Step 5 — Policy & Self-Critic Agent

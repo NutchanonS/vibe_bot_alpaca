@@ -1,31 +1,31 @@
 # Alpaca Trading Bot — Claude Code Project
 
 ## Project Overview
-Automated trading bot platform using Alpaca API with Python strategies, a modern web dashboard, and full Docker deployment. Sandbox/production switchable via `.env`.
+Automated trading bot platform using Alpaca API with Python strategies, a LangGraph agentic pipeline, a Node.js/Express backend, and a React/TypeScript dashboard. Sandbox/production switchable via `.env`.
 
 ---
 
 ## Architecture
 
 ```
-alpaca-trading-bot/
-├── CLAUDE.md                    # This file
-├── .env.example                 # Template for environment variables
-├── .env                         # Local env (never commit)
-├── docker-compose.yml           # One-command startup
-├── docker-compose.prod.yml      # Production override
+vibe_bot/
+├── CLAUDE.md                        # This file
+├── .env.example                     # Template for environment variables
+├── .env                             # Local env (never commit)
+├── docker-compose.yml               # One-command startup
+├── docker-compose.prod.yml          # Production override
 │
-├── strategy/                    # Python — core trading engine
+├── strategy/                        # Python — core trading engine + agent pipeline
 │   ├── Dockerfile
 │   ├── requirements.txt
-│   ├── main.py                  # Bot entrypoint
-│   ├── config.py                # Loads env, validates keys
+│   ├── main.py                      # Bot entrypoint
+│   ├── config.py                    # Loads env, validates keys (settings.openai_api_key etc.)
 │   ├── broker/
-│   │   ├── alpaca_client.py     # Alpaca REST + WebSocket wrapper
-│   │   └── order_manager.py     # Order placement, tracking, cancellation
+│   │   ├── alpaca_client.py         # Alpaca REST + WebSocket wrapper
+│   │   └── order_manager.py         # Order placement, tracking, cancellation
 │   ├── strategies/
-│   │   ├── base_strategy.py     # Abstract base — all strategies extend this
-│   │   ├── registry.py          # Strategy registry — add new ones here
+│   │   ├── base_strategy.py         # Abstract base — Signal, SignalType, BaseStrategy
+│   │   ├── registry.py              # Strategy registry — add new strategies here
 │   │   ├── rsi_mean_reversion.py
 │   │   ├── ema_crossover.py
 │   │   └── vwap_breakout.py
@@ -35,50 +35,84 @@ alpaca-trading-bot/
 │   │   ├── ema.py
 │   │   ├── vwap.py
 │   │   └── bollinger.py
+│   ├── agents/                      # LangGraph agentic pipeline (6 agents)
+│   │   ├── base_agent.py            # Abstract BaseAgent interface
+│   │   ├── orchestrator.py          # LangGraph graph wiring + AgentState
+│   │   ├── market_data_agent.py     # Step 1a: fetch bars + compute indicators → MarketSnapshot
+│   │   ├── data_qa_agent.py         # Step 1b: quality checks + circuit breaker → QAResult
+│   │   ├── news_fetcher_agent.py    # Step 2a: Alpaca News API → NewsSnapshot[]
+│   │   ├── news_analysis_agent.py   # Step 2b: OpenAI structured output → NewsSentiment per symbol
+│   │   ├── signal_selection_agent.py# Step 3: runs rule-based signals + GPT-4o-mini → SignalSelectionResult
+│   │   └── risk_agent.py            # Step 4: position sizing, stop-loss, profit target → RiskAllocation
 │   ├── risk/
-│   │   └── risk_manager.py      # Position sizing, max drawdown, stop-loss
-│   └── utils/
-│       ├── logger.py
-│       └── notifier.py          # Alert hooks (Telegram/Discord optional)
+│   │   └── risk_manager.py
+│   ├── utils/
+│   │   ├── logger.py
+│   │   └── notifier.py              # Telegram/Discord alert hooks
+│   └── tests/
+│       ├── test_strategies.py
+│       ├── test_market_data_agent.py
+│       ├── test_data_qa_agent.py
+│       ├── test_news_fetcher_agent.py
+│       ├── test_news_analysis_agent.py
+│       └── test_signal_selection_agent.py
 │
-├── backend/                     # Node.js (Express) or FastAPI — REST API + WebSocket relay
+├── backend/                         # Node.js (Express) — REST API + WebSocket relay
 │   ├── Dockerfile
-│   ├── package.json             # if Node; or requirements.txt if FastAPI
+│   ├── package.json
 │   ├── src/
-│   │   ├── index.js             # API server entrypoint
+│   │   ├── index.js                 # Express server entrypoint
 │   │   ├── routes/
-│   │   │   ├── portfolio.js     # GET /api/portfolio
-│   │   │   ├── trades.js        # GET/POST /api/trades
-│   │   │   ├── orders.js        # POST /api/orders (manual trading)
-│   │   │   ├── strategies.js    # GET/POST /api/strategies (enable/disable)
-│   │   │   └── watchlist.js     # GET/POST /api/watchlist
+│   │   │   ├── auth.js              # POST /api/auth/login (JWT)
+│   │   │   ├── portfolio.js         # GET /api/portfolio (Redis-cached)
+│   │   │   ├── trades.js            # GET /api/trades (PostgreSQL history)
+│   │   │   ├── orders.js            # GET/POST /api/orders (Alpaca)
+│   │   │   ├── quote.js             # GET /api/quote/:symbol
+│   │   │   ├── chart.js             # GET /api/chart/:symbol
+│   │   │   ├── assets.js            # GET /api/assets (symbol search)
+│   │   │   ├── strategies.js        # GET/POST /api/strategies
+│   │   │   ├── indicators.js        # GET/PATCH /api/indicators (chart overlay config)
+│   │   │   ├── watchlist.js         # GET/POST /api/watchlist
+│   │   │   ├── news.js              # GET /api/news
+│   │   │   ├── agent.js             # GET /api/agent/status, POST /api/agent/run
+│   │   │   └── backtest.js          # GET /api/backtest (JS strategy simulators)
 │   │   └── ws/
-│   │       └── relay.js         # WebSocket relay for live price feeds
+│   │       └── relay.js             # WebSocket relay for live price feeds
 │   └── redis/
-│       └── cache.js             # Redis for live data caching
+│       └── cache.js
 │
-├── frontend/                    # React + TypeScript + TailwindCSS + Recharts
+├── frontend/                        # React + TypeScript + TailwindCSS
 │   ├── Dockerfile
 │   ├── package.json
 │   └── src/
 │       ├── App.tsx
 │       ├── pages/
-│       │   ├── Dashboard.tsx    # Overview: balance, P&L, active positions
-│       │   ├── Trading.tsx      # Manual trade panel + order book
-│       │   ├── Strategies.tsx   # Toggle strategies, set params
-│       │   ├── Portfolio.tsx    # Holdings, allocation charts
-│       │   └── History.tsx      # Trade history, performance metrics
-│       └── components/
-│           ├── PriceChart.tsx   # Live candlestick chart (lightweight-charts)
-│           ├── OrderPanel.tsx   # Buy/sell form with order types
-│           ├── PositionTable.tsx
-│           └── AlertBanner.tsx
+│       │   ├── Landing.tsx          # Marketing/landing page
+│       │   ├── Login.tsx            # JWT login form
+│       │   ├── Dashboard.tsx        # Main trading view (chart + bottom panel tabs)
+│       │   ├── Trading.tsx          # Manual trade panel + order book
+│       │   ├── Strategies.tsx       # Strategy config, indicators, monitor, backtest
+│       │   ├── Portfolio.tsx        # Holdings, allocation charts, P&L analysis
+│       │   └── History.tsx          # Trade history, performance metrics
+│       ├── components/
+│       │   ├── PriceChart.tsx       # Candlestick/line chart (lightweight-charts)
+│       │   ├── PortfolioSummary.tsx # Top stats bar incl. AI Signal card
+│       │   ├── OrderPanel.tsx       # Buy/sell form
+│       │   ├── PositionTable.tsx
+│       │   ├── AlertBanner.tsx
+│       │   └── SymbolSearch.tsx
+│       └── lib/
+│           ├── format.ts
+│           └── socket.ts
 │
 ├── db/
-│   └── init.sql                 # PostgreSQL schema (trades, orders, snapshots)
-│
-└── nginx/
-    └── nginx.conf               # Reverse proxy — single port entry
+│   └── init.sql                     # PostgreSQL schema
+├── nginx/
+│   └── nginx.conf
+└── noted/                           # Developer notes and documentation
+    ├── backtest_logic.md
+    ├── vibe_bot_agentic_prompt.md
+    └── vectorDB.md
 ```
 
 ---
@@ -90,15 +124,19 @@ alpaca-trading-bot/
 
 # --- Alpaca ---
 ALPACA_MODE=sandbox              # sandbox | production
-ALPACA_PAPER_API_KEY=your_paper_key
-ALPACA_PAPER_SECRET_KEY=your_paper_secret
-ALPACA_LIVE_API_KEY=your_live_key
-ALPACA_LIVE_SECRET_KEY=your_live_secret
+ALPACA_PAPER_API_KEY=
+ALPACA_PAPER_SECRET_KEY=
+ALPACA_LIVE_API_KEY=
+ALPACA_LIVE_SECRET_KEY=
+
+# --- OpenAI (required for agent pipeline) ---
+OPENAI_API_KEY=                  # used by NewsAnalysisAgent + SignalSelectionAgent
 
 # --- App ---
 BACKEND_PORT=8000
 FRONTEND_PORT=3000
 JWT_SECRET=change_this_secret
+DASHBOARD_PASSWORD=              # simple password for login page
 
 # --- Database ---
 POSTGRES_HOST=db
@@ -113,8 +151,13 @@ REDIS_PORT=6379
 
 # --- Strategy Settings ---
 DEFAULT_STRATEGIES=rsi_mean_reversion,ema_crossover,vwap_breakout
-MAX_POSITION_SIZE_PCT=5          # max % of portfolio per position
-MAX_DRAWDOWN_PCT=10              # kill switch threshold
+MAX_POSITION_SIZE_PCT=5
+MAX_DRAWDOWN_PCT=10
+
+# --- Notifications (optional) ---
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+DISCORD_WEBHOOK_URL=
 ```
 
 ---
@@ -123,90 +166,142 @@ MAX_DRAWDOWN_PCT=10              # kill switch threshold
 
 ### 1. RSI Mean Reversion (`rsi_mean_reversion.py`)
 - **Logic:** Buy when RSI < 30 (oversold), sell when RSI > 70 (overbought)
-- **Timeframe:** 15-minute bars
+- **Timeframe:** 15-minute bars (live); daily bars in backtest
 - **Indicators:** RSI(14), optional Bollinger Band confirmation
-- **Best for:** Range-bound, sideways markets
 
 ### 2. EMA Crossover (`ema_crossover.py`)
-- **Logic:** Buy on EMA(9) crossing above EMA(21); sell on cross below
-- **Timeframe:** 1-hour bars
-- **Indicators:** EMA(9), EMA(21), volume confirmation
-- **Best for:** Trending markets, momentum plays
+- **Logic:** Buy on EMA(9) crossing above EMA(21) with volume confirmation; sell on reverse cross
+- **Timeframe:** 1-hour bars (live); daily bars in backtest
+- **Indicators:** EMA(9), EMA(21), rolling volume average
 
 ### 3. VWAP Breakout (`vwap_breakout.py`)
-- **Logic:** Buy when price breaks above VWAP with above-average volume; short/exit when price falls below
-- **Timeframe:** 5-minute bars intraday
+- **Logic:** Buy when price breaks above VWAP with volume z-score > 1.5; exit when price falls below
+- **Timeframe:** 5-minute bars intraday (live); rolling-window VWAP in backtest
 - **Indicators:** VWAP, volume z-score
-- **Best for:** Day trading individual S&P 500 stocks
 
 ### Adding a New Strategy
 ```python
 # 1. Create strategy/strategies/my_strategy.py
-from strategies.base_strategy import BaseStrategy
+from strategies.base_strategy import BaseStrategy, Signal, SignalType
 
 class MyStrategy(BaseStrategy):
     name = "my_strategy"
-    def generate_signal(self, bars) -> Signal: ...
+    def generate_signal(self, symbol: str, bars: pd.DataFrame) -> Signal: ...
 
-# 2. Register it
-# strategy/strategies/registry.py
+# 2. Register it in strategy/strategies/registry.py
 from .my_strategy import MyStrategy
 REGISTRY["my_strategy"] = MyStrategy
 ```
 
 ---
 
-## Dashboard Features (Frontend)
+## Agent Pipeline (LangGraph)
 
-| Page | Features |
+The agentic pipeline runs on a schedule (or manually via `POST /api/agent/run`). All state flows through `AgentState` (TypedDict) in `orchestrator.py`.
+
+```
+MarketDataFetcherAgent  →  DataQAAgent  →  NewsFetcherAgent
+                                         ↓
+                              NewsAnalysisAgent  →  SignalSelectionAgent
+```
+
+| Agent | Output key | Description |
+|---|---|---|
+| `MarketDataFetcherAgent` | `market_snapshots` | Fetches OHLCV bars, computes RSI/EMA/VWAP indicators |
+| `DataQAAgent` | `qa_result` | Hard-fail and quality checks; sets circuit breaker |
+| `NewsFetcherAgent` | `news_snapshots` | Alpaca News API, last 24h, up to 10 articles/symbol |
+| `NewsAnalysisAgent` | `news_sentiments` | gpt-4o-mini structured output → sentiment score + themes |
+| `SignalSelectionAgent` | `signal_selections` | Runs all 3 strategies as evidence, calls gpt-4o-mini → BUY/SELL/NO_TRADE |
+| `RiskCapitalAllocationAgent` | `risk_allocations` | GPT-4o-mini → position size %, stop-loss, profit target per symbol |
+
+**Signal selection confidence gate:** direction is forced to `NO_TRADE` if `confidence < 0.65`.
+
+**Agent status** is written to Redis key `agent:status` and read by `GET /api/agent/status`.
+
+---
+
+## Backtest System
+
+The backtest is a **pure Node.js reimplementation** in `backend/src/routes/backtest.js`. It is independent of the live Python strategies.
+
+**Endpoint:** `GET /api/backtest?symbols=SPY,AAPL&strategy=all&timeframe=3m&days=90`
+
+- `timeframe`: `1m` (60d) | `3m` (120d) | `6m` (210d) | `1y` (400d)
+- `days`: custom day count (overrides timeframe)
+- All strategies run on **daily bars** regardless of their live timeframe
+- Fills at `bars[i+1].open` (next-bar execution, no look-ahead bias)
+
+**Stats returned per strategy:** total return %, win rate, loss rate, max drawdown, Sharpe, profit factor, avg win/loss, best/worst trade, unrealized P&L, ending balance (on $10k).
+
+---
+
+## Dashboard Features
+
+### Dashboard page (`Dashboard.tsx`)
+- Top bar: Portfolio Value, Invested, Cash, Unrealized P&L, Positions, AI Signal (from `signal_selections`)
+- Chart header: symbol, price, AI Signal badge (BUY/SELL/NO_TRADE + confidence)
+- Bottom panel (draggable, collapsible) with 7 tabs:
+
+| Tab | Content |
 |---|---|
-| Dashboard | Live balance, unrealized P&L, daily gain/loss, active positions card, news feed |
-| Trading | Buy/sell form, order type (market/limit/stop), order book, recent fills |
-| Chart | Candlestick chart with indicator overlays (EMA, VWAP, Bollinger), drawing tools |
-| Strategies | Enable/disable each strategy, edit parameters (RSI thresholds, EMA periods), backtest trigger |
-| Portfolio | Allocation pie chart, position table, sector breakdown |
-| History | Trade log, P&L per trade, win rate, Sharpe ratio, max drawdown chart |
-| Alerts | Price alerts, strategy signal notifications |
+| Positions | Open positions table |
+| Orders | Order history |
+| Activity | Live strategy signal feed (WebSocket) |
+| News | Live news feed for active symbol |
+| Agents | Pipeline status, QA card counts, Run Now button |
+| News Analysis | Per-symbol news sentiment with expandable details |
+| Signals | Per-symbol AI signal decisions with reasoning |
+
+### Strategies page (`Strategies.tsx`)
+- **Trading tab:** Enable/disable strategies, edit parameters
+- **Indicators tab:** Configure chart overlay indicators
+- **Monitor tab:** Live strategy signal monitor
+- **Backtest Monitor tab:** Run simulated backtests with custom timeframe/days, per-strategy performance cards
+
+### Portfolio page (`Portfolio.tsx`)
+- Allocation pie chart, treemap, position table
+- Unrealized P&L bar chart (toggle $ / % scale)
 
 ---
 
 ## Running the Project
 
 ```bash
-# 1. Clone and configure
+# 1. Configure
 cp .env.example .env
-# Edit .env with your Alpaca paper keys
+# Fill in ALPACA_PAPER_API_KEY, ALPACA_PAPER_SECRET_KEY, OPENAI_API_KEY
 
-# 2. Start everything (sandbox mode)
+# 2. Start everything
 docker-compose up --build
 
 # 3. Open dashboard
 open http://localhost:3000
 
-# 4. Switch to production
-# Edit .env: ALPACA_MODE=production
-docker-compose up --build
+# 4. Run tests (Python agents)
+cd strategy && python -m pytest tests/ -v
 ```
 
 ---
 
 ## Key Technical Decisions
 
-- **Strategy engine:** Pure Python with `alpaca-py`, `pandas-ta` for indicators, `apscheduler` for cron-like bar polling
-- **Backend:** Node.js (Express) for low-latency WebSocket relay; alternatively FastAPI if you prefer full Python
-- **Frontend:** React + TypeScript + TailwindCSS; `lightweight-charts` (TradingView library) for candlesticks; `Recharts` for P&L and portfolio charts
-- **Database:** PostgreSQL for trade history and snapshots; Redis for live price caching
-- **Docker:** Each service in its own container; Nginx as reverse proxy; single `docker-compose up` starts everything
+- **Agent pipeline:** LangGraph (`StateGraph`) with 5 agents; state is a `TypedDict`; agents are pure functions `(state: dict) -> dict`
+- **LLM calls:** OpenAI `gpt-4o-mini` with `beta.chat.completions.parse` (structured output via Pydantic). System prompts are kept constant for automatic prompt caching.
+- **Backtest:** JS reimplementation in `backtest.js` — independent of Python strategies, runs on daily bars only
+- **Backend:** Node.js/Express for low-latency WebSocket relay; Redis for live data caching; PostgreSQL for trade history
+- **Frontend:** React + TypeScript + TailwindCSS; `lightweight-charts` for candlesticks; `Recharts` for P&L/portfolio charts
+- **Agent status:** Written to Redis `agent:status` key by Python worker; polled every 10–15s by frontend
 
 ---
 
 ## Claude Code Guidelines
 
 - Always read this file at the start of every session
-- Never hardcode API keys — always use `config.py` which reads from `.env`
-- When adding a strategy, follow the `BaseStrategy` interface and register in `registry.py`
-- All orders must go through `order_manager.py` — never call Alpaca directly from strategy files
+- Never hardcode API keys — always use `config.py` (Python) or `process.env` (Node.js)
+- When adding a strategy, extend `BaseStrategy`, implement `generate_signal`, and register in `registry.py`
+- All orders must go through `order_manager.py` — never call Alpaca directly from strategy or agent files
 - Keep strategy logic pure (no I/O) — strategies return `Signal` objects, the engine executes them
+- Agent output keys: `market_snapshots`, `qa_result`, `news_snapshots`, `news_sentiments`, `signal_selections`
 - Frontend API calls go through the backend — never call Alpaca directly from the browser
-- Run `docker-compose up --build` to test the full stack before marking any task done
 - Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`
+- Run `docker-compose up --build` to test the full stack before marking any task done
