@@ -573,3 +573,121 @@ existing activity tab).
 Keep styling consistent with the existing dark theme (#0d1117 bg,
 border-border, text-gain/text-loss for colors).
 ```
+
+---
+
+## Step 10 - Vector Memory (pgvector) for Steps 2b/3/5
+
+**Use this after Steps 1-9 are stable.**
+
+```
+I am extending my existing LangGraph trading bot with vector memory for retrieval-augmented decisions.
+
+Repo context:
+- Root: c:\works\vibe_bot
+- Python agents in strategy/agents/
+- PostgreSQL schema in db/init.sql
+- Existing agents: news_analysis_agent.py (Step 2b), signal_selection_agent.py (Step 3)
+- Step 5 policy_critic_agent.py may already exist or needs creation
+- Config loader: strategy/config.py
+- DB driver available: psycopg2-binary
+- OpenAI SDK already used for chat completions
+
+Goal:
+Add pgvector-based memory so Step 2b/3/5 can write and retrieve historical context.
+
+Requirements:
+
+1) Database schema
+- Update db/init.sql:
+  - CREATE EXTENSION IF NOT EXISTS vector;
+  - Create table agent_memory with columns:
+    id BIGSERIAL PK,
+    created_at TIMESTAMPTZ default now,
+    event_at TIMESTAMPTZ default now,
+    symbol VARCHAR(16) null,
+    stage VARCHAR(32) not null,
+    memory_type VARCHAR(32) not null,
+    source_agent VARCHAR(64) not null,
+    run_id UUID null,
+    cycle_id BIGINT null,
+    content_text TEXT not null,
+    embedding_model VARCHAR(64) default 'text-embedding-3-small',
+    embedding_dim INT default 1536,
+    embedding vector(1536) not null,
+    confidence REAL null,
+    sentiment_score REAL null,
+    quality_score REAL null,
+    outcome_pnl_pct REAL null,
+    metadata_json JSONB default '{}'::jsonb
+  - Add indexes for symbol/stage/type/event_at and metadata_json GIN.
+  - Add ivfflat cosine index for embedding.
+
+2) Config additions
+- Update strategy/config.py Config dataclass and load_config():
+  - embedding_model (default: text-embedding-3-small)
+  - vector_top_k (default: 6)
+  - vector_min_similarity (default: 0.72)
+
+3) New memory module
+- Create strategy/memory/vector_memory.py with a small service class:
+  - embed_text(text: str) -> list[float]
+  - add_memory(...)
+  - search_memories(query_text, symbol=None, stages=None, memory_types=None, top_k=None)
+- Use OpenAI embeddings API (text-embedding-3-small by default).
+- Use psycopg2 connection from config env values.
+- Handle failures safely: log errors and return empty results (do not break trading cycle).
+
+4) Integrate Step 2b (news_analysis_agent.py)
+- Before LLM call per symbol:
+  - Retrieve top 3 similar news_sentiment memories for that symbol (last 90 days).
+  - Add compact "historical context" lines to user prompt.
+- After successful sentiment parse (or neutral fallback):
+  - Write memory row:
+    stage='news_analysis', memory_type='news_sentiment', source_agent='NewsAnalysisAgent'.
+  - content_text includes headline summary + themes + risks + generated summary.
+  - Store confidence/sentiment_score and article metadata in metadata_json.
+
+5) Integrate Step 3 (signal_selection_agent.py)
+- Before LLM call:
+  - Build retrieval query from current indicators + strategy evidence + news sentiment.
+  - Retrieve top 5 memories for same symbol across memory_type in
+    ['signal_decision','trade_outcome','news_sentiment'].
+  - Add "similar historical setups" section to user prompt.
+- After parsed result:
+  - Write memory row:
+    stage='signal_selection', memory_type='signal_decision', source_agent='SignalSelectionAgent'.
+  - Store direction/confidence/reasoning/supporting/conflicting in content_text + metadata_json.
+
+6) Integrate Step 5 (policy_critic_agent.py)
+- If file does not exist, create it according to Step 5 spec first.
+- Before policy LLM call:
+  - Retrieve top 5 risk-relevant memories (policy_review, trade_outcome, signal_decision).
+  - Bias retrieval toward prior vetoes and negative outcomes.
+  - Inject these into prompt as "risk precedents".
+- After verdict:
+  - Write memory row:
+    stage='policy_critic', memory_type='policy_review', source_agent='PolicyCriticAgent'.
+  - Save veto/caution reasons and confidence_adjustment.
+
+7) Tests
+- Add/update tests with mocked embedding + DB calls:
+  - strategy/tests/test_news_analysis_agent.py
+  - strategy/tests/test_signal_selection_agent.py
+  - strategy/tests/test_policy_critic_agent.py (if Step 5 exists)
+- Validate:
+  - Retrieval failures do not crash agents.
+  - Prompts include retrieved context when available.
+  - Memory writes happen for success and fallback paths.
+
+8) Output and constraints
+- Keep existing run(state)->dict contracts unchanged.
+- Do not hard fail cycle on vector DB or embedding errors.
+- Keep code style consistent with existing project.
+
+Deliverables:
+- List all changed files.
+- Provide key code excerpts for new module and each agent integration point.
+- Provide SQL migration snippet.
+- Provide test command(s) and expected pass status.
+```

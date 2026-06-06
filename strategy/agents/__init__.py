@@ -5,7 +5,7 @@ from agents.market_data_agent import MarketDataFetcherAgent, MarketSnapshot
 from agents.data_qa_agent import DataQAAgent, QAResult
 from agents.news_fetcher_agent import NewsFetcherAgent, NewsSnapshot, NewsArticle
 from agents.news_analysis_agent import NewsAnalysisAgent, NewsSentiment
-from agents.signal_selection_agent import SignalSelectionAgent, SignalSelectionContext
+from agents.signal_selection_agent import SignalSelectionAgent, SignalSelectionResult
 
 try:
     from agents.orchestrator import AgentOrchestrator
@@ -18,6 +18,6 @@ __all__ = [
     "DataQAAgent", "QAResult",
     "NewsFetcherAgent", "NewsSnapshot", "NewsArticle",
     "NewsAnalysisAgent", "NewsSentiment",
-    "SignalSelectionAgent", "SignalSelectionContext",
+    "SignalSelectionAgent", "SignalSelectionResult",
     "AgentOrchestrator",
 ]

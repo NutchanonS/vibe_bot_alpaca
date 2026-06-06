@@ -136,10 +136,33 @@ function simVWAP(bars, p = {}) {
   return trades;
 }
 
+// ── Stats helpers ──────────────────────────────────────────────────────────────
+
+function calcMaxDrawdown(curve) {
+  if (curve.length === 0) return 0;
+  let peak = -Infinity;
+  let maxDd = 0;
+  for (const { cumPnl } of curve) {
+    if (cumPnl > peak) peak = cumPnl;
+    const dd = peak - cumPnl;
+    if (dd > maxDd) maxDd = dd;
+  }
+  return parseFloat(maxDd.toFixed(4));
+}
+
+function calcSharpe(returns) {
+  if (returns.length < 2) return 0;
+  const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+  const variance = returns.reduce((s, r) => s + (r - mean) ** 2, 0) / returns.length;
+  const std = Math.sqrt(variance);
+  return std > 0 ? parseFloat((mean / std).toFixed(2)) : 0;
+}
+
 // ── Stats ──────────────────────────────────────────────────────────────────────
 
 function calcStats(trades) {
   const closed  = trades.filter(t => !t.open);
+  const openT   = trades.filter(t => t.open);
   const wins    = closed.filter(t => t.pnlPct > 0);
   const losses  = closed.filter(t => t.pnlPct <= 0);
   const winPnl  = wins.reduce((s, t) => s + t.pnlPct, 0);
@@ -148,16 +171,29 @@ function calcStats(trades) {
   const pf      = Math.abs(lossPnl) > 0 ? winPnl / Math.abs(lossPnl) : (winPnl > 0 ? 99 : 0);
   let cum = 0;
   const curve = closed.map(t => { cum += t.pnlPct; return { time: t.exitTime, cumPnl: parseFloat(cum.toFixed(4)) }; });
+
+  const totalPnlPct     = parseFloat((winPnl + lossPnl).toFixed(4));
+  const maxDrawdownPct  = calcMaxDrawdown(curve);
+  const unrealizedPnlPct = parseFloat(openT.reduce((s, t) => s + t.pnlPct, 0).toFixed(4));
+  const sharpe          = calcSharpe(closed.map(t => t.pnlPct));
+  const bestTradePct    = closed.length > 0 ? parseFloat(Math.max(...closed.map(t => t.pnlPct)).toFixed(4)) : 0;
+  const worstTradePct   = closed.length > 0 ? parseFloat(Math.min(...closed.map(t => t.pnlPct)).toFixed(4)) : 0;
+
   return {
-    totalTrades: n,
-    openTrades:  trades.filter(t => t.open).length,
-    wins:        wins.length,
-    losses:      losses.length,
-    winRate:     n > 0 ? wins.length / n * 100 : 0,
-    totalPnlPct: parseFloat((winPnl + lossPnl).toFixed(4)),
-    avgWin:      wins.length  > 0 ? parseFloat((winPnl  / wins.length).toFixed(4))  : 0,
-    avgLoss:     losses.length > 0 ? parseFloat((lossPnl / losses.length).toFixed(4)) : 0,
-    profitFactor: parseFloat(Math.min(pf, 99).toFixed(2)),
+    totalTrades:    n,
+    openTrades:     openT.length,
+    wins:           wins.length,
+    losses:         losses.length,
+    winRate:        n > 0 ? wins.length / n * 100 : 0,
+    totalPnlPct,
+    avgWin:         wins.length   > 0 ? parseFloat((winPnl  / wins.length).toFixed(4))   : 0,
+    avgLoss:        losses.length > 0 ? parseFloat((lossPnl / losses.length).toFixed(4)) : 0,
+    profitFactor:   parseFloat(Math.min(pf, 99).toFixed(2)),
+    maxDrawdownPct,
+    unrealizedPnlPct,
+    sharpe,
+    bestTradePct,
+    worstTradePct,
     curve,
   };
 }

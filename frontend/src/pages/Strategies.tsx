@@ -860,6 +860,8 @@ interface BtStats {
   totalTrades: number; openTrades: number;
   wins: number; losses: number; winRate: number;
   totalPnlPct: number; avgWin: number; avgLoss: number; profitFactor: number;
+  maxDrawdownPct: number; unrealizedPnlPct: number;
+  sharpe: number; bestTradePct: number; worstTradePct: number;
   curve: { time: string; cumPnl: number }[];
 }
 interface BtTrade {
@@ -1230,36 +1232,87 @@ function BacktestTab() {
                         {!s || s.totalTrades === 0 ? (
                           <p className="text-xs text-gray-500 italic">No signals in period</p>
                         ) : (
-                          <div className="grid grid-cols-2 gap-y-2 text-xs">
-                            <div>
-                              <p className="text-gray-500">Total Return</p>
-                              <p className={clsx("font-bold text-sm", pnlPctColor(s.totalPnlPct))}>{fmtPct(s.totalPnlPct)}</p>
+                          <>
+                            {/* Headline row — 3 big numbers */}
+                            <div className="grid grid-cols-3 gap-2 mb-3">
+                              <div className="bg-surface rounded-md p-2 text-center">
+                                <p className="text-[9px] uppercase tracking-widest text-gray-500 mb-0.5">Return</p>
+                                <p className={clsx("font-bold text-sm", pnlPctColor(s.totalPnlPct))}>{fmtPct(s.totalPnlPct)}</p>
+                              </div>
+                              <div className="bg-surface rounded-md p-2 text-center">
+                                <p className="text-[9px] uppercase tracking-widest text-gray-500 mb-0.5">Max DD</p>
+                                <p className={clsx("font-bold text-sm", s.maxDrawdownPct > 0 ? "text-loss" : "text-gray-400")}>
+                                  {s.maxDrawdownPct > 0 ? `-${s.maxDrawdownPct.toFixed(2)}%` : "—"}
+                                </p>
+                              </div>
+                              <div className="bg-surface rounded-md p-2 text-center">
+                                <p className="text-[9px] uppercase tracking-widest text-gray-500 mb-0.5">Sharpe</p>
+                                <p className={clsx("font-bold text-sm", s.sharpe >= 1 ? "text-gain" : s.sharpe > 0 ? "text-white" : "text-loss")}>
+                                  {s.sharpe.toFixed(2)}
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-gray-500">Win Rate</p>
-                              <p className={clsx("font-bold text-sm", s.winRate >= 50 ? "text-gain" : "text-loss")}>
-                                {s.winRate.toFixed(0)}%
-                              </p>
+
+                            {/* Ending balance row */}
+                            <div className="flex items-center justify-between bg-surface rounded-md px-3 py-1.5 mb-3 text-xs">
+                              <span className="text-gray-500">Ending Balance <span className="text-gray-600">(on $10k)</span></span>
+                              <span className={clsx("font-bold", pnlPctColor(s.totalPnlPct))}>
+                                ${(10000 * (1 + s.totalPnlPct / 100)).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                              </span>
                             </div>
-                            <div>
-                              <p className="text-gray-500">Trades</p>
-                              <p className="font-semibold text-white">{s.totalTrades} ({s.wins}W/{s.losses}L)</p>
+
+                            {/* Detail grid — 2 col */}
+                            <div className="grid grid-cols-2 gap-y-2 text-xs">
+                              <div>
+                                <p className="text-gray-500">Win Rate</p>
+                                <p className={clsx("font-semibold", s.winRate >= 50 ? "text-gain" : "text-loss")}>
+                                  {s.winRate.toFixed(1)}%
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Loss Rate</p>
+                                <p className={clsx("font-semibold", s.winRate >= 50 ? "text-loss" : "text-loss")}>
+                                  {(100 - s.winRate).toFixed(1)}%
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Trades</p>
+                                <p className="font-semibold text-white">{s.totalTrades} ({s.wins}W / {s.losses}L)</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Profit Factor</p>
+                                <p className={clsx("font-semibold", s.profitFactor >= 1 ? "text-gain" : "text-loss")}>
+                                  {s.profitFactor.toFixed(2)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Avg Win</p>
+                                <p className="text-gain font-semibold">{s.wins > 0 ? fmtPct(s.avgWin) : "—"}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Avg Loss</p>
+                                <p className="text-loss font-semibold">{s.losses > 0 ? fmtPct(s.avgLoss) : "—"}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Best Trade</p>
+                                <p className="text-gain font-semibold">{s.totalTrades > 0 ? fmtPct(s.bestTradePct) : "—"}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Worst Trade</p>
+                                <p className="text-loss font-semibold">{s.totalTrades > 0 ? fmtPct(s.worstTradePct) : "—"}</p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-gray-500">Profit Factor</p>
-                              <p className={clsx("font-semibold", s.profitFactor >= 1 ? "text-gain" : "text-loss")}>
-                                {s.profitFactor.toFixed(2)}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-gray-500">Avg Win</p>
-                              <p className="text-gain font-semibold">{s.wins > 0 ? fmtPct(s.avgWin) : "—"}</p>
-                            </div>
-                            <div>
-                              <p className="text-gray-500">Avg Loss</p>
-                              <p className="text-loss font-semibold">{s.losses > 0 ? fmtPct(s.avgLoss) : "—"}</p>
-                            </div>
-                          </div>
+
+                            {/* Unrealized P&L — only if open positions exist */}
+                            {s.openTrades > 0 && (
+                              <div className="mt-3 flex items-center justify-between border-t border-border pt-2 text-xs">
+                                <span className="text-gray-500">Unrealized ({s.openTrades} open)</span>
+                                <span className={clsx("font-semibold", pnlPctColor(s.unrealizedPnlPct))}>
+                                  {fmtPct(s.unrealizedPnlPct)}
+                                </span>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     );

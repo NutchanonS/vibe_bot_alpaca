@@ -113,14 +113,17 @@ const PieTooltip = ({ active, payload }: { active?: boolean; payload?: any[] }) 
 
 const HBarTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
-  const v: number = payload[0].value;
-  const pct: number = payload[0].payload.pnlPct;
+  const dollar: number = payload[0].payload.pnl;
+  const pct: number    = payload[0].payload.pnlPct;
+  const isPct = payload[0].dataKey === "pnlPct";
   return (
     <div className="bg-panel border border-border rounded-lg p-3 text-xs shadow-xl">
       <p className="font-bold text-white mb-1">{label}</p>
-      <p className={clsx("font-semibold", v >= 0 ? "text-gain" : "text-loss")}>
-        {v >= 0 ? "+" : ""}{fmt.currency(v)}
-        <span className="text-gray-400 font-normal ml-2">({pct >= 0 ? "+" : ""}{pct.toFixed(2)}%)</span>
+      <p className={clsx("font-semibold", dollar >= 0 ? "text-gain" : "text-loss")}>
+        {isPct
+          ? <>{pct >= 0 ? "+" : ""}{pct.toFixed(2)}%<span className="text-gray-400 font-normal ml-2">({dollar >= 0 ? "+" : ""}{fmt.currency(dollar)})</span></>
+          : <>{dollar >= 0 ? "+" : ""}{fmt.currency(dollar)}<span className="text-gray-400 font-normal ml-2">({pct >= 0 ? "+" : ""}{pct.toFixed(2)}%)</span></>
+        }
       </p>
     </div>
   );
@@ -205,6 +208,7 @@ function Metric({ label, value, sub, badge, color }: {
 export default function Portfolio() {
   const [sortKey, setSortKey] = useState<SortKey>("value");
   const [sortAsc, setSortAsc] = useState(false);
+  const [pnlScale, setPnlScale] = useState<"dollar" | "percent">("dollar");
 
   const { data: portfolio, isLoading } = useQuery<PortfolioData>({
     queryKey: ["portfolio"],
@@ -519,7 +523,18 @@ export default function Portfolio() {
         <div className="xl:col-span-5 bg-panel border border-border rounded-lg p-4 flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <p className="text-[11px] text-gray-500 uppercase tracking-widest font-medium">Unrealized P&L by Position</p>
-            <span className="text-[10px] text-gray-600">sorted by return %</span>
+            <div className="flex bg-surface border border-border rounded overflow-hidden text-[10px]">
+              {(["dollar", "percent"] as const).map(scale => (
+                <button
+                  key={scale}
+                  onClick={() => setPnlScale(scale)}
+                  className={clsx("px-2 py-0.5 font-medium transition-colors",
+                    pnlScale === scale ? "bg-brand text-white" : "text-gray-400 hover:text-white")}
+                >
+                  {scale === "dollar" ? "$" : "%"}
+                </button>
+              ))}
+            </div>
           </div>
           {pnlData.length === 0 ? (
             <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">No positions</div>
@@ -530,7 +545,9 @@ export default function Portfolio() {
                   type="number"
                   tick={{ fill: "#9ca3af", fontSize: 10 }}
                   axisLine={false} tickLine={false}
-                  tickFormatter={v => Math.abs(v) >= 1000 ? `$${(v/1000).toFixed(1)}k` : `$${v}`}
+                  tickFormatter={pnlScale === "dollar"
+                    ? v => Math.abs(v) >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v}`
+                    : v => `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`}
                 />
                 <YAxis
                   type="category" dataKey="symbol" width={44}
@@ -539,7 +556,7 @@ export default function Portfolio() {
                 />
                 <Tooltip content={<HBarTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
                 <ReferenceLine x={0} stroke="#374151" strokeWidth={1} />
-                <Bar dataKey="pnl" radius={[0, 3, 3, 0]} maxBarSize={26}>
+                <Bar dataKey={pnlScale === "dollar" ? "pnl" : "pnlPct"} radius={[0, 3, 3, 0]} maxBarSize={26}>
                   {pnlData.map((entry, i) => <Cell key={i} fill={entry.fill} fillOpacity={0.85} />)}
                 </Bar>
               </BarChart>

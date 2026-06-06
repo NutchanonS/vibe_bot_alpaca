@@ -28,7 +28,7 @@ class AgentState(TypedDict, total=False):
     qa_result: Any
     news_snapshots: list[Any]
     news_sentiments: dict[str, Any]
-    signal_contexts: dict[str, Any]
+    signal_selections: dict[str, Any]
 
 
 class AgentOrchestrator:
@@ -79,7 +79,7 @@ class AgentOrchestrator:
         market_snapshots = state.get("market_snapshots", [])
         news_snapshots = state.get("news_snapshots", [])
         news_sentiments = state.get("news_sentiments", {})
-        signal_contexts = state.get("signal_contexts", {})
+        signal_selections = state.get("signal_selections", {})
 
         return {
             "status": "ok",
@@ -125,9 +125,9 @@ class AgentOrchestrator:
                 sym: self._to_plain(sentiment)
                 for sym, sentiment in news_sentiments.items()
             },
-            "signal_contexts": {
-                sym: self._to_plain(ctx)
-                for sym, ctx in signal_contexts.items()
+            "signal_selections": {
+                sym: self._to_plain(sel)
+                for sym, sel in signal_selections.items()
             },
         }
 
