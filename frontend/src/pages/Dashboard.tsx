@@ -699,9 +699,13 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<"positions" | "orders" | "activity" | "news" | "agents" | "news_agent" | "signal_agent">("positions");
   const [chartType, setChartType] = useState<"candlestick" | "line">("candlestick");
   const [bottomPanelHeight, setBottomPanelHeight] = useState(260);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const bottomResizeActiveRef = useRef(false);
   const bottomResizeStartYRef = useRef(0);
   const bottomResizeStartHeightRef = useRef(260);
+  const preCollapseHeightRef = useRef(260);
+  const centerColumnRef = useRef<HTMLDivElement>(null);
 
   const { data: portfolio } = useQuery<Portfolio>({
     queryKey: ["portfolio"],
@@ -757,14 +761,19 @@ export default function Dashboard() {
     const onMove = (e: MouseEvent) => {
       if (!bottomResizeActiveRef.current) return;
       const delta = bottomResizeStartYRef.current - e.clientY;
-      const next = Math.max(180, Math.min(420, bottomResizeStartHeightRef.current + delta));
+      const MIN_CHART_HEIGHT = 120;
+      const maxPanel = centerColumnRef.current
+        ? centerColumnRef.current.clientHeight - MIN_CHART_HEIGHT
+        : 420;
+      const next = Math.max(180, Math.min(maxPanel, bottomResizeStartHeightRef.current + delta));
       setBottomPanelHeight(next);
     };
-
     const onUp = () => {
-      bottomResizeActiveRef.current = false;
+      if (bottomResizeActiveRef.current) {
+        bottomResizeActiveRef.current = false;
+        setIsDragging(false);
+      }
     };
-
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
     return () => {
@@ -774,11 +783,24 @@ export default function Dashboard() {
   }, []);
 
   const startBottomResize = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isCollapsed) return;
     e.preventDefault();
+    setIsDragging(true);
     bottomResizeActiveRef.current = true;
     bottomResizeStartYRef.current = e.clientY;
     bottomResizeStartHeightRef.current = bottomPanelHeight;
   };
+
+  const toggleCollapse = () => {
+    if (isCollapsed) {
+      setIsCollapsed(false);
+      setBottomPanelHeight(preCollapseHeightRef.current);
+    } else {
+      preCollapseHeightRef.current = bottomPanelHeight;
+      setIsCollapsed(true);
+    }
+  };
+
 
   const cash = Number(portfolio?.cash ?? 0);
   const buyingPower = Number(portfolio?.buying_power ?? 0);
@@ -817,7 +839,7 @@ export default function Dashboard() {
         </div>
 
         {/* ── Center: Chart ── */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div ref={centerColumnRef} className="flex-1 flex flex-col min-w-0">
           {/* Quote header */}
           <div className="px-4 py-2 border-b border-border flex-shrink-0">
             {/* Row 1: price + controls */}
@@ -919,15 +941,50 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* ── Bottom tabs: Positions / Orders / Activity / News ── */}
-          <div className="border-t border-border flex-shrink-0" style={{ height: `${bottomPanelHeight}px` }}>
+          {/* ── Bottom panel ── */}
+          <div
+            className="relative z-10 border-t border-border flex-shrink-0 transition-[height] duration-150 ease-out bg-[#0d1117]"
+            style={{ height: isCollapsed ? "36px" : `${bottomPanelHeight}px` }}
+          >
+            {/* ── Resize handle ── */}
             <div
               onMouseDown={startBottomResize}
-              className="h-3 border-b border-border/60 bg-panel/80 cursor-row-resize flex items-center justify-center text-[9px] text-gray-600 select-none"
-              title="Drag to resize"
+              className={clsx(
+                "h-9 flex items-center justify-between px-3 select-none group transition-colors flex-shrink-0",
+                isCollapsed ? "cursor-default" : "cursor-row-resize",
+                isDragging ? "bg-brand/10" : "hover:bg-white/[0.025]"
+              )}
             >
-              <span>drag edge to resize</span>
+              {/* Drag pill — centered, invisible click target covers full width */}
+              <div className="flex-1 flex items-center justify-center">
+                <div className={clsx(
+                  "w-10 h-[3px] rounded-full transition-all duration-150",
+                  isDragging
+                    ? "bg-brand/70 w-14"
+                    : isCollapsed
+                      ? "bg-white/10"
+                      : "bg-white/15 group-hover:bg-white/35 group-hover:w-14"
+                )} />
+              </div>
+
+              {/* Collapse / expand toggle */}
+              <div onMouseDown={e => e.stopPropagation()}>
+                <button
+                  onClick={toggleCollapse}
+                  title={isCollapsed ? "Expand panel" : "Collapse panel"}
+                  className="w-6 h-6 rounded flex items-center justify-center text-gray-500 hover:bg-white/10 hover:text-gray-200 transition-colors"
+                >
+                  <svg
+                    width="10" height="10" viewBox="0 0 10 10" fill="none"
+                    className={clsx("transition-transform duration-150", isCollapsed ? "rotate-180" : "")}
+                  >
+                    <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
             </div>
+            {!isCollapsed && (
+            <>
             <div className="flex border-b border-border">
               <button onClick={() => setActiveTab("positions")}
                 className={clsx("px-4 py-2 text-xs font-medium transition-colors",
@@ -967,7 +1024,7 @@ export default function Dashboard() {
               </button>
             </div>
 
-            <div className="overflow-auto" style={{ maxHeight: `${Math.max(120, bottomPanelHeight - 48)}px` }}>
+            <div className="overflow-auto" style={{ maxHeight: `${Math.max(120, bottomPanelHeight - 76)}px` }}>
               {activeTab === "positions" && (
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-[#0d1117]">
@@ -1049,6 +1106,8 @@ export default function Dashboard() {
               {activeTab === "news_agent"   && <NewsAgentPanel />}
               {activeTab === "signal_agent" && <SignalAgentPanel />}
             </div>
+            </>
+            )}
           </div>
         </div>
 
