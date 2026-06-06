@@ -77,6 +77,17 @@ interface AgentStatus {
     supporting_signals?: string[];
     conflicting_signals?: string[];
   }>;
+  risk_allocations?: Record<string, {
+    approved?: boolean;
+    symbol?: string;
+    qty?: number;
+    entry_price?: number;
+    stop_loss?: number;
+    profit_target?: number;
+    risk_pct?: number;
+    reasoning?: string;
+    rejection_reason?: string | null;
+  }>;
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -566,6 +577,153 @@ function SignalAgentPanel() {
   );
 }
 
+// ── Risk Allocation panel ──────────────────────────────────────────────────────
+
+function riskRejectionCategory(reason: string | null | undefined): string {
+  if (!reason) return "Unknown";
+  const r = reason.toLowerCase();
+  if (r.includes("no_trade"))             return "No signal";
+  if (r.includes("open positions limit")) return "Position limit (≥5 open)";
+  if (r.includes("cannot sell"))          return "No position to sell";
+  if (r.includes("hard position cap"))    return "Cap = 0 shares";
+  if (r.includes("risk cap"))             return "Risk cap = 0 shares";
+  if (r.includes("stop_loss must be"))    return "Invalid stop-loss";
+  if (r.includes("stop-loss distance"))   return "Invalid stop distance";
+  if (r.includes("invalid portfolio"))    return "Portfolio error";
+  if (r.includes("invalid entry price"))  return "Price unavailable";
+  if (r.includes("openai"))              return "LLM unavailable";
+  return "Guardrail";
+}
+
+function RiskAgentPanel() {
+  const { data, isLoading, isError } = useAgentStatus();
+
+  if (isLoading) return <p className="text-xs text-gray-500 p-3">Loading risk allocations…</p>;
+  if (isError)   return <p className="text-xs text-loss p-3">Failed to load agent status.</p>;
+  if (!data)     return <p className="text-xs text-gray-500 p-3">No data yet — run the pipeline first.</p>;
+
+  const allocations = data.risk_allocations ?? {};
+
+  if (Object.keys(allocations).length === 0) {
+    return <p className="text-xs text-gray-500 p-3">No risk allocations yet — run the pipeline first.</p>;
+  }
+
+  return (
+    <div className="p-3 space-y-1.5 text-xs">
+      <p className="text-[10px] uppercase tracking-widest text-gray-500 font-medium">
+        Risk Allocations ({Object.keys(allocations).length})
+      </p>
+      {Object.entries(allocations).map(([sym, alloc]) => {
+        const approved = alloc.approved ?? false;
+        const entry  = alloc.entry_price  ?? 0;
+        const sl     = alloc.stop_loss    ?? 0;
+        const target = alloc.profit_target ?? 0;
+
+        const stopDistPct   = entry > 0 && sl     > 0 ? ((sl     - entry) / entry) * 100 : null;
+        const targetGainPct = entry > 0 && target > 0 ? ((target - entry) / entry) * 100 : null;
+        const riskDist      = entry > 0 && sl     > 0 ? Math.abs(entry - sl)             : 0;
+        const rewardDist    = entry > 0 && target > 0 ? Math.abs(target - entry)         : 0;
+        const rrRatio       = riskDist > 0 ? rewardDist / riskDist : null;
+
+        return (
+          <div
+            key={`risk-${sym}`}
+            className={clsx(
+              "border rounded-md px-3 py-2 space-y-2",
+              approved ? "border-gain/30 bg-gain/5" : "border-border/70 bg-surface/40"
+            )}
+          >
+            {/* Header row */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-mono text-brand">{sym}</span>
+              <span className={clsx(
+                "text-[10px] font-bold px-1.5 py-0.5 rounded",
+                approved ? "bg-gain/20 text-gain" : "bg-loss/20 text-loss"
+              )}>
+                {approved ? "APPROVED" : "REJECTED"}
+              </span>
+              {approved && alloc.qty != null && (
+                <span className="text-gray-300 font-semibold">{alloc.qty} shares</span>
+              )}
+              {approved && alloc.risk_pct != null && (
+                <span className="text-gray-500">
+                  risk <span className="text-yellow-400 font-semibold">{alloc.risk_pct.toFixed(2)}%</span> equity
+                </span>
+              )}
+              {approved && rrRatio != null && (
+                <span className={clsx(
+                  "text-[10px] px-1.5 py-0.5 rounded border font-semibold",
+                  rrRatio >= 2 ? "border-gain/40 text-gain bg-gain/10"
+                    : rrRatio >= 1 ? "border-yellow-500/40 text-yellow-400 bg-yellow-400/10"
+                    : "border-loss/40 text-loss bg-loss/10"
+                )}>
+                  R:R 1:{rrRatio.toFixed(1)}
+                </span>
+              )}
+              {!approved && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-border text-gray-400">
+                  {riskRejectionCategory(alloc.rejection_reason)}
+                </span>
+              )}
+            </div>
+
+            {/* Approved: price tiles with sub-labels */}
+            {approved && (
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-surface/60 border border-border/60 rounded px-2 py-1.5">
+                  <p className="text-[9px] uppercase tracking-wide text-gray-500">Entry</p>
+                  <p className="text-gray-200 font-mono font-semibold">
+                    {entry > 0 ? `$${entry.toFixed(2)}` : "—"}
+                  </p>
+                  <p className="text-[9px] text-gray-600 mt-0.5">fill price</p>
+                </div>
+                <div className="bg-loss/10 border border-loss/20 rounded px-2 py-1.5">
+                  <p className="text-[9px] uppercase tracking-wide text-loss/70">Stop Loss</p>
+                  <p className="text-loss font-mono font-semibold">
+                    {sl > 0 ? `$${sl.toFixed(2)}` : "—"}
+                  </p>
+                  {stopDistPct != null && (
+                    <p className="text-[9px] text-loss/60 mt-0.5">
+                      {stopDistPct > 0 ? "+" : ""}{stopDistPct.toFixed(2)}% from entry
+                    </p>
+                  )}
+                </div>
+                <div className="bg-gain/10 border border-gain/20 rounded px-2 py-1.5">
+                  <p className="text-[9px] uppercase tracking-wide text-gain/70">Target</p>
+                  <p className="text-gain font-mono font-semibold">
+                    {target > 0 ? `$${target.toFixed(2)}` : "—"}
+                  </p>
+                  {targetGainPct != null && (
+                    <p className="text-[9px] text-gain/60 mt-0.5">
+                      {targetGainPct > 0 ? "+" : ""}{targetGainPct.toFixed(2)}% from entry
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Rejection: full reason */}
+            {!approved && alloc.rejection_reason && (
+              <div className="bg-loss/5 border border-loss/20 rounded px-2 py-1.5">
+                <p className="text-[9px] uppercase tracking-wide text-loss/60 mb-0.5">Guardrail triggered</p>
+                <p className="text-loss/80 text-[11px] leading-relaxed">{alloc.rejection_reason}</p>
+              </div>
+            )}
+
+            {/* LLM reasoning — shown for both approved and rejected (when present and different from rejection_reason) */}
+            {alloc.reasoning && alloc.reasoning !== alloc.rejection_reason && (
+              <div className="border-t border-border/40 pt-1.5">
+                <p className="text-[9px] uppercase tracking-wide text-gray-600 mb-0.5">LLM reasoning</p>
+                <p className="text-gray-400 text-[11px] leading-relaxed">{alloc.reasoning}</p>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Small components ──────────────────────────────────────────────────────────
 
 function Badge({ side }: { side: string }) {
@@ -696,7 +854,7 @@ export default function Dashboard() {
   const [timeframe, setTimeframe] = useState<(typeof TIMEFRAMES)[number]>("3m");
   const [signals, setSignals] = useState<SignalLog[]>([]);
   const [watchlist] = useState(["SPY", "AAPL", "TSLA", "NVDA", "QQQ", "MSFT"]);
-  const [activeTab, setActiveTab] = useState<"positions" | "orders" | "activity" | "news" | "agents" | "news_agent" | "signal_agent">("positions");
+  const [activeTab, setActiveTab] = useState<"positions" | "orders" | "activity" | "news" | "agents" | "news_agent" | "signal_agent" | "risk_agent">("positions");
   const [chartType, setChartType] = useState<"candlestick" | "line">("candlestick");
   const [bottomPanelHeight, setBottomPanelHeight] = useState(260);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -1022,6 +1180,11 @@ export default function Dashboard() {
                   activeTab === "signal_agent" ? "border-b-2 border-brand text-white" : "text-gray-500 hover:text-gray-300")}>
                 Signals
               </button>
+              <button onClick={() => setActiveTab("risk_agent")}
+                className={clsx("px-4 py-2 text-xs font-medium transition-colors",
+                  activeTab === "risk_agent" ? "border-b-2 border-brand text-white" : "text-gray-500 hover:text-gray-300")}>
+                Risk
+              </button>
             </div>
 
             <div className="overflow-auto" style={{ maxHeight: `${Math.max(120, bottomPanelHeight - 76)}px` }}>
@@ -1105,6 +1268,7 @@ export default function Dashboard() {
               {activeTab === "agents"       && <AgentPipelinePanel activeSymbol={activeSymbol} />}
               {activeTab === "news_agent"   && <NewsAgentPanel />}
               {activeTab === "signal_agent" && <SignalAgentPanel />}
+              {activeTab === "risk_agent"   && <RiskAgentPanel />}
             </div>
             </>
             )}
