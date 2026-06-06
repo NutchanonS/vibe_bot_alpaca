@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone, timedelta
 from typing import Callable, Optional
 
 import pandas as pd
@@ -60,6 +61,7 @@ class AlpacaClient:
             symbol_or_symbols=symbol,
             timeframe=tf,
             limit=limit,
+            start=datetime.now(timezone.utc) - timedelta(days=7),
         )
         bars = self._data.get_stock_bars(req)
         df = bars.df

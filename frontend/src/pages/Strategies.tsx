@@ -869,7 +869,7 @@ interface BtTrade {
 }
 interface BtResult { trades: BtTrade[]; stats: BtStats; params: Record<string, number>; }
 interface BtSymbolData { barCount: number; results: Record<string, BtResult>; }
-interface BtResponse { timeframe: string; symbols: string[]; data: Record<string, BtSymbolData>; }
+interface BtResponse { timeframe: string; days?: number; symbols: string[]; data: Record<string, BtSymbolData>; }
 
 // ── Backtest constants ─────────────────────────────────────────────────────────
 
@@ -882,6 +882,12 @@ const BT_STRAT_COLORS: Record<string, string> = {
 const BT_CHART_TF: Record<"1m"|"3m"|"6m"|"1y", "1M"|"3M"|"1Y"> = {
   "1m": "1M", "3m": "3M", "6m": "3M", "1y": "1Y",
 };
+
+function chartTfFromDays(days: number): "1M"|"3M"|"1Y" {
+  if (days <= 60)  return "1M";
+  if (days <= 210) return "3M";
+  return "1Y";
+}
 
 const BT_VIS_PERIOD: Record<"1m"|"3m"|"6m"|"1y", "1m"|"3m"|"1y"> = {
   "1m": "1m", "3m": "3m", "6m": "3m", "1y": "1y",
@@ -992,15 +998,21 @@ function fmtPct(v: number): string {
 function BacktestTab() {
   const [symbol, setSymbol] = useState("SPY");
   const [stratFilter, setStratFilter] = useState("all");
-  const [timeframe, setTimeframe] = useState<"1m"|"3m"|"6m"|"1y">("3m");
+  const [timeframe, setTimeframe] = useState<"1m"|"3m"|"6m"|"1y"|"custom">("3m");
+  const [customDays, setCustomDays] = useState<number>(30);
+  const [customDaysInput, setCustomDaysInput] = useState("30");
   const [chartType, setChartType] = useState<"candlestick" | "line">("candlestick");
   const [mode, setMode] = useState<"simulated"|"live">("simulated");
   const [hiddenIndicatorIds, setHiddenIndicatorIds] = useState<string[]>([]);
 
+  const resolvedChartTf = timeframe === "custom"
+    ? chartTfFromDays(customDays)
+    : BT_CHART_TF[timeframe];
+
   // Chart data (daily bars for the selected symbol)
   const { data: chartData, isLoading: chartLoading } = useQuery({
-    queryKey: ["chart", symbol, BT_CHART_TF[timeframe]],
-    queryFn: () => api.get(`/chart/${symbol}?timeframe=${BT_CHART_TF[timeframe]}&extended=1`).then(r => r.data),
+    queryKey: ["chart", symbol, resolvedChartTf],
+    queryFn: () => api.get(`/chart/${symbol}?timeframe=${resolvedChartTf}&extended=1`).then(r => r.data),
   });
   const bars: Bar[] = chartData?.bars ?? [];
   const isIntraday: boolean = chartData?.intraday ?? false;
@@ -1012,12 +1024,14 @@ function BacktestTab() {
     queryFn: () => api.get("/indicators").then(r => r.data),
     staleTime: 30_000,
   });
+  const btQueryString = timeframe === "custom"
+    ? `/backtest?symbols=${COMPARE_SYMS.join(",")}&strategy=${stratFilter}&days=${customDays}`
+    : `/backtest?symbols=${COMPARE_SYMS.join(",")}&strategy=${stratFilter}&timeframe=${timeframe}`;
+
   // Simulated backtest: all watchlist symbols × all strategies
   const { data: btData, isLoading: btLoading } = useQuery<BtResponse>({
-    queryKey: ["backtest", COMPARE_SYMS.join(","), stratFilter, timeframe],
-    queryFn: () =>
-      api.get(`/backtest?symbols=${COMPARE_SYMS.join(",")}&strategy=${stratFilter}&timeframe=${timeframe}`)
-        .then(r => r.data),
+    queryKey: ["backtest", COMPARE_SYMS.join(","), stratFilter, timeframe, timeframe === "custom" ? customDays : null],
+    queryFn: () => api.get(btQueryString).then(r => r.data),
     enabled: mode === "simulated",
     staleTime: 120_000,
   });
@@ -1125,7 +1139,7 @@ function BacktestTab() {
             <option value="line">Line</option>
           </select>
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-1 items-center">
           {(["1m","3m","6m","1y"] as const).map(tf => (
             <button key={tf} onClick={() => setTimeframe(tf)}
               className={clsx("px-2.5 py-1 rounded text-xs font-medium transition-colors",
@@ -1133,6 +1147,37 @@ function BacktestTab() {
               {tf.toUpperCase()}
             </button>
           ))}
+          <button onClick={() => setTimeframe("custom")}
+            className={clsx("px-2.5 py-1 rounded text-xs font-medium transition-colors",
+              timeframe === "custom" ? "bg-brand text-white" : "text-gray-400 hover:bg-border hover:text-white")}>
+            Custom
+          </button>
+          {timeframe === "custom" && (
+            <div className="flex items-center gap-1 ml-1">
+              <input
+                type="number"
+                min={7}
+                max={730}
+                value={customDaysInput}
+                onChange={e => setCustomDaysInput(e.target.value)}
+                onBlur={() => {
+                  const n = parseInt(customDaysInput, 10);
+                  if (n >= 7 && n <= 730) setCustomDays(n);
+                  else setCustomDaysInput(String(customDays));
+                }}
+                onKeyDown={e => {
+                  if (e.key === "Enter") {
+                    const n = parseInt(customDaysInput, 10);
+                    if (n >= 7 && n <= 730) setCustomDays(n);
+                    else setCustomDaysInput(String(customDays));
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
+                className="w-16 bg-surface border border-border rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-brand text-center"
+              />
+              <span className="text-xs text-gray-400">days</span>
+            </div>
+          )}
         </div>
         {/* Mode toggle */}
         <div className="ml-auto flex bg-surface border border-border rounded-lg overflow-hidden text-xs">
@@ -1160,7 +1205,7 @@ function BacktestTab() {
               {/* Strategy performance cards */}
               <div>
                 <p className="text-[10px] uppercase tracking-widest text-gray-500 mb-2">
-                  Strategy Performance — {symbol} ({timeframe.toUpperCase()})
+                  Strategy Performance — {symbol} ({timeframe === "custom" ? `${customDays}d` : timeframe.toUpperCase()})
                 </p>
                 <div className="grid grid-cols-3 gap-3">
                   {["rsi_mean_reversion","ema_crossover","vwap_breakout"].map((strat, i) => {

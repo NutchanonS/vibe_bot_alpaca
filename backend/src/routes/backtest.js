@@ -173,13 +173,13 @@ const TF_MAP = {
 
 function daysAgo(n) { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString(); }
 
-async function fetchBars(symbol, tf) {
-  const cfg = TF_MAP[tf] ?? TF_MAP["3m"];
+async function fetchBars(symbol, tf, overrideDays) {
+  const days = (overrideDays && overrideDays > 0) ? overrideDays : (TF_MAP[tf]?.days ?? TF_MAP["3m"].days);
   const { data } = await axios.get(`${DATA_URL}/v2/stocks/${symbol}/bars`, {
     headers: getHeaders(),
     params: {
       timeframe: "1Day",
-      start: daysAgo(cfg.days),
+      start: daysAgo(days),
       end: new Date().toISOString(),
       limit: 10000,
       adjustment: "raw",
@@ -227,6 +227,7 @@ router.get("/", async (req, res) => {
     const symbolList   = req.query.symbols
       ? req.query.symbols.split(",").map(s => s.trim().toUpperCase()).filter(Boolean)
       : [(req.query.symbol || "SPY").toUpperCase()];
+    const customDays   = req.query.days ? parseInt(req.query.days, 10) : null;
 
     let paramsOverride = {};
     try { paramsOverride = req.query.params ? JSON.parse(req.query.params) : {}; } catch (_) {}
@@ -234,7 +235,7 @@ router.get("/", async (req, res) => {
     // Fetch all symbols in parallel
     const barsMap = {};
     await Promise.all(symbolList.map(async sym => {
-      try { barsMap[sym] = await fetchBars(sym, tf); }
+      try { barsMap[sym] = await fetchBars(sym, tf, customDays); }
       catch (e) { barsMap[sym] = []; }
     }));
 
@@ -251,7 +252,7 @@ router.get("/", async (req, res) => {
       }
     }
 
-    res.json({ timeframe: tf, symbols: symbolList, data: output });
+    res.json({ timeframe: tf, days: customDays ?? undefined, symbols: symbolList, data: output });
   } catch (err) {
     const status = err.response?.status || 500;
     res.status(status).json({ error: err.response?.data?.message || err.message });

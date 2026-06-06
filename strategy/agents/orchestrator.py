@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, TypedDict
 
 from langgraph.graph import END, StateGraph
@@ -113,7 +113,7 @@ class AgentOrchestrator:
                                 "summary": getattr(a, "summary", ""),
                                 "source": getattr(a, "source", ""),
                                 "url": getattr(a, "url", ""),
-                                "created_at": getattr(a, "created_at", None),
+                                "created_at": AgentOrchestrator._to_plain(getattr(a, "created_at", None)),
                             }
                             for a in getattr(s, "articles", [])[:5]
                         ],
@@ -135,10 +135,12 @@ class AgentOrchestrator:
     def _to_plain(value: Any) -> Any:
         if value is None:
             return None
+        if isinstance(value, (datetime, date)):
+            return value.isoformat()
         if hasattr(value, "model_dump"):
             return value.model_dump()
         if is_dataclass(value):
-            return asdict(value)
+            return AgentOrchestrator._to_plain(asdict(value))
         if isinstance(value, dict):
             return {k: AgentOrchestrator._to_plain(v) for k, v in value.items()}
         if isinstance(value, list):
