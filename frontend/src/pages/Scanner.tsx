@@ -576,7 +576,7 @@ function MomentumStageDetail({ id }: { id: string }) {
           ))}
         </tbody>
       </table>
-      <p className="text-[10px] text-gray-600 mt-2">Survivors are scored by (0.4 × change_norm) + (0.4 × rvol_norm) + (0.2 × price_quality). Top 20 advance.</p>
+      <p className="text-[10px] text-gray-600 mt-2">Survivors are scored by (0.4 × change_norm) + (0.4 × rvol_norm) + (0.2 × price_quality). Top N advance (configurable via Stage 1 selector).</p>
     </div>
   );
 
@@ -604,7 +604,7 @@ function MomentumStageDetail({ id }: { id: string }) {
           ))}
         </tbody>
       </table>
-      <p className="text-[10px] text-gray-600 mt-2">Combined score = Stage 1 score + deep score. Top 10 by combined score advance to LLM stages.</p>
+      <p className="text-[10px] text-gray-600 mt-2">Combined score = Stage 1 score + deep score. Top N advance to LLM stages (configurable via Stage 2 selector).</p>
     </div>
   );
 
@@ -918,7 +918,9 @@ function MomentumResultsPanel({ ranked }: { ranked: MomentumRow[] }) {
 
 function MomentumTab() {
   const qc = useQueryClient();
-  const [subTab, setSubTab] = useState<"results" | "pipeline">("results");
+  const [subTab,      setSubTab]      = useState<"results" | "pipeline">("results");
+  const [stage1TopN,  setStage1TopN]  = useState(20);
+  const [stage2TopN,  setStage2TopN]  = useState(10);
 
   const { data: status } = useQuery<MomentumStatus>({
     queryKey: ["momentum-status"],
@@ -934,7 +936,7 @@ function MomentumTab() {
   });
 
   const runMutation = useMutation({
-    mutationFn: () => api.post("/momentum/run", { stage1_top_n: 20, stage2_top_n: 10 }),
+    mutationFn: () => api.post("/momentum/run", { stage1_top_n: stage1TopN, stage2_top_n: stage2TopN }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["momentum-status"] });
       qc.invalidateQueries({ queryKey: ["momentum-results"] });
@@ -952,18 +954,33 @@ function MomentumTab() {
           <div>
             <h2 className="text-base font-bold tracking-tight">Momentum Scanner</h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Catalyst-driven: live movers → % change + RVOL gates → quality screen → 4h news → LLM catalyst → intraday signal
+              Today's biggest movers — % change + RVOL gates → quality screen → 4h news → LLM catalyst → intraday signal
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-gray-500 uppercase tracking-wide">Stage 1</span>
+              <select
+                value={stage1TopN}
+                onChange={e => setStage1TopN(Number(e.target.value))}
+                className="bg-surface border border-border rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-brand"
+              >
+                {[10, 15, 20, 30, 50].map(n => <option key={n} value={n}>top {n}</option>)}
+              </select>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-gray-500 uppercase tracking-wide">Stage 2</span>
+              <select
+                value={stage2TopN}
+                onChange={e => setStage2TopN(Number(e.target.value))}
+                className="bg-surface border border-border rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-brand"
+              >
+                {[3, 5, 8, 10, 15].map(n => <option key={n} value={n}>top {n}</option>)}
+              </select>
+            </div>
             {status?.status === "ok" && results?.completed_at && (
               <span className="text-[10px] text-gray-500 font-mono">
                 Last: {new Date(results.completed_at).toLocaleTimeString()}
-              </span>
-            )}
-            {status?.status === "ok" && (
-              <span className="text-[10px] text-gray-400">
-                {results?.stage1_count ?? 0} qualified → {results?.stage2_count ?? 0} deep → {ranked.length} ranked
               </span>
             )}
             <button
@@ -978,6 +995,24 @@ function MomentumTab() {
             >
               {isRunning ? "Scanning…" : "Run Scan"}
             </button>
+          </div>
+        </div>
+
+        {/* Funnel stats row */}
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2 text-center">
+            <FunnelBadge label="Universe"   count={results?.universe_size} color="text-gray-300" />
+            <span className="text-gray-700 text-xs">→</span>
+            <FunnelBadge label="Stage 1"    count={results?.stage1_count ?? status?.stage1_count} total={stage1TopN} color="text-orange-300" />
+            <span className="text-gray-700 text-xs">→</span>
+            <FunnelBadge label="Stage 2"    count={results?.stage2_count ?? status?.stage2_count} total={stage2TopN} color="text-cyan-300" />
+            <span className="text-gray-700 text-xs">→</span>
+            <FunnelBadge label="Ranked"     count={ranked.length || undefined} color="text-gain" />
+          </div>
+          <div className="ml-auto flex items-center gap-1.5 text-[10px] text-gray-600">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400/70 inline-block" /> Stage 1: % chg + RVOL hard gates</span>
+            <span className="flex items-center gap-1 ml-3"><span className="w-2 h-2 rounded-full bg-cyan-400/70 inline-block" /> Stage 2: HOD hold · flag · VWAP reclaim</span>
+            <span className="text-gray-600 ml-3">Stages 3–5: 4h news → catalyst LLM → signal LLM</span>
           </div>
         </div>
 
