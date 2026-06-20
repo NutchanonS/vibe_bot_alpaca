@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+﻿import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import api from "../api/client";
 import { useState, useEffect, useMemo } from "react";
@@ -17,7 +17,7 @@ import {
 } from "../lib/indicators";
 import type { Bar } from "../lib/indicators";
 
-// ── Types ──────────────────────────────────────────────────────────────────────
+// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface StrategyConfig {
   type?: string; label?: string; enabled: boolean;
@@ -62,7 +62,7 @@ interface LiveSignal {
   strategy: string; symbol: string; signal: string; time: Date;
 }
 
-// ── Constants ──────────────────────────────────────────────────────────────────
+// â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const BUILTIN_LABELS: Record<string, string> = {
   rsi_mean_reversion: "RSI Mean Reversion",
@@ -72,7 +72,7 @@ const BUILTIN_LABELS: Record<string, string> = {
 const BUILTIN_KEYS = Object.keys(BUILTIN_LABELS);
 const IND_COLORS = ["#f59e0b","#8b5cf6","#06b6d4","#22c55e","#ef4444","#ec4899","#14b8a6","#f97316"];
 
-// ── Strategy logic metadata ────────────────────────────────────────────────────
+// â”€â”€ Strategy logic metadata â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const STRATEGY_LOGIC: Record<string, {
   description: string;
@@ -83,11 +83,11 @@ const STRATEGY_LOGIC: Record<string, {
   chartTip: string;
 }> = {
   rsi_mean_reversion: {
-    description: "Exploits mean-reversion: prices that have moved too far from their average tend to snap back. RSI measures speed and magnitude of price moves on a 0–100 scale.",
+    description: "Exploits mean-reversion: prices that have moved too far from their average tend to snap back. RSI measures speed and magnitude of price moves on a 0â€“100 scale.",
     signals: [
-      { icon: "▲", label: "BUY",  rule: "RSI(14) drops below `oversold` threshold (default 30) → price is exhausted, likely to bounce" },
-      { icon: "▼", label: "SELL", rule: "RSI(14) rises above `overbought` threshold (default 70) → rally is extended, likely to pull back" },
-      { icon: "◈", label: "FILTER", rule: "use_bollinger=true: price must also be near the lower/upper band to confirm" },
+      { icon: "â–²", label: "BUY",  rule: "RSI(14) drops below `oversold` threshold (default 30) â†’ price is exhausted, likely to bounce" },
+      { icon: "â–¼", label: "SELL", rule: "RSI(14) rises above `overbought` threshold (default 70) â†’ rally is extended, likely to pull back" },
+      { icon: "â—ˆ", label: "FILTER", rule: "use_bollinger=true: price must also be near the lower/upper band to confirm" },
     ],
     pseudocode:
 `rsi = RSI(closes, period=rsi_period)   # default 14
@@ -103,15 +103,15 @@ if use_bollinger:
     if signal == BUY  and close > lower: signal = HOLD
     if signal == SELL and close < upper: signal = HOLD`,
     bestFor: "Sideways / range-bound markets. Works well on index ETFs (SPY, QQQ) and mean-reverting assets.",
-    avoid: "Strong trending markets — RSI can stay below 30 for a long time in a downtrend.",
+    avoid: "Strong trending markets â€” RSI can stay below 30 for a long time in a downtrend.",
     chartTip: "Add RSI indicator (sub-pane) to see the 30/70 lines. Add Bollinger Bands overlay if use_bollinger is enabled.",
   },
   ema_crossover: {
-    description: "Trend-following strategy based on two exponential moving averages. When the fast EMA crosses above the slow EMA, momentum is shifting upward — a buy signal. The reverse is a sell.",
+    description: "Trend-following strategy based on two exponential moving averages. When the fast EMA crosses above the slow EMA, momentum is shifting upward â€” a buy signal. The reverse is a sell.",
     signals: [
-      { icon: "▲", label: "BUY (Golden Cross)",  rule: "EMA(fast) crosses above EMA(slow) AND volume > avg_volume × multiplier" },
-      { icon: "▼", label: "SELL (Death Cross)", rule: "EMA(fast) crosses below EMA(slow)" },
-      { icon: "◈", label: "VOLUME",  rule: "Volume must confirm the move: current volume > lookback average × volume_multiplier" },
+      { icon: "â–²", label: "BUY (Golden Cross)",  rule: "EMA(fast) crosses above EMA(slow) AND volume > avg_volume Ã— multiplier" },
+      { icon: "â–¼", label: "SELL (Death Cross)", rule: "EMA(fast) crosses below EMA(slow)" },
+      { icon: "â—ˆ", label: "VOLUME",  rule: "Volume must confirm the move: current volume > lookback average Ã— volume_multiplier" },
     ],
     pseudocode:
 `ema_fast = EMA(closes, period=fast_period)  # default 9
@@ -125,16 +125,16 @@ if crossed_up and volume > avg_vol * volume_multiplier:
     signal = BUY
 elif crossed_dn:
     signal = SELL`,
-    bestFor: "Trending markets — strong uptrends or downtrends with momentum. Tech stocks, crypto.",
-    avoid: "Choppy / sideways markets — produces many false crossovers (whipsaws).",
+    bestFor: "Trending markets â€” strong uptrends or downtrends with momentum. Tech stocks, crypto.",
+    avoid: "Choppy / sideways markets â€” produces many false crossovers (whipsaws).",
     chartTip: "Enable EMA 9 (amber) and EMA 21 (purple) overlays on the chart to watch crossovers in real time.",
   },
   vwap_breakout: {
     description: "Intraday momentum strategy. VWAP (Volume Weighted Average Price) is the 'fair value' benchmark used by institutional traders. A break above VWAP with unusual volume signals institutional buying.",
     signals: [
-      { icon: "▲", label: "BUY",  rule: "price > VWAP AND volume z-score > threshold (default 1.5) → breakout confirmed by volume" },
-      { icon: "▼", label: "SELL", rule: "price falls below VWAP → breakout failed or target reached, exit position" },
-      { icon: "◈", label: "Z-SCORE", rule: "z = (volume − avg_volume) / std_volume; must exceed volume_zscore_threshold to filter noise" },
+      { icon: "â–²", label: "BUY",  rule: "price > VWAP AND volume z-score > threshold (default 1.5) â†’ breakout confirmed by volume" },
+      { icon: "â–¼", label: "SELL", rule: "price falls below VWAP â†’ breakout failed or target reached, exit position" },
+      { icon: "â—ˆ", label: "Z-SCORE", rule: "z = (volume âˆ’ avg_volume) / std_volume; must exceed volume_zscore_threshold to filter noise" },
     ],
     pseudocode:
 `vwap    = VWAP(bars)           # cumulative intraday VWAP
@@ -152,7 +152,7 @@ elif price < vwap:
   },
 };
 
-// ── Shared modals ──────────────────────────────────────────────────────────────
+// â”€â”€ Shared modals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function AddStrategyModal({ types, onClose }: { types: StrategyTypesMap; onClose: () => void }) {
   const qc = useQueryClient();
@@ -180,7 +180,7 @@ function AddStrategyModal({ types, onClose }: { types: StrategyTypesMap; onClose
       <div className="bg-panel border border-border rounded-xl w-full max-w-md p-6 space-y-4">
         <div className="flex justify-between items-center">
           <h3 className="font-bold text-base">Add Strategy</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-gray-500 hover:text-white text-xl leading-none">Ã—</button>
         </div>
         <div>
           <label className="text-xs text-gray-400 block mb-1">Strategy Name</label>
@@ -219,7 +219,7 @@ function AddStrategyModal({ types, onClose }: { types: StrategyTypesMap; onClose
           <button onClick={onClose} className="flex-1 py-2 bg-border rounded text-sm text-gray-300 hover:bg-gray-600">Cancel</button>
           <button onClick={() => mut.mutate()} disabled={!name.trim() || mut.isPending}
             className="flex-1 py-2 btn-brand-grad disabled:opacity-50 rounded text-sm font-semibold transition-colors">
-            {mut.isPending ? "Adding…" : "Add Strategy"}
+            {mut.isPending ? "Addingâ€¦" : "Add Strategy"}
           </button>
         </div>
       </div>
@@ -277,14 +277,14 @@ function AddIndicatorModal({ types, onClose }: { types: IndicatorTypesMap; onClo
       <div className="bg-panel border border-border rounded-xl w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center">
           <h3 className="font-bold text-base">Add Indicator</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-gray-500 hover:text-white text-xl leading-none">Ã—</button>
         </div>
         <div>
           <label className="text-xs text-gray-400 block mb-1">Indicator Type <span className="text-gray-600">({Object.keys(types).length} available)</span></label>
           <select className="w-full bg-surface border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-brand"
             value={type} onChange={e => { setType(e.target.value); setParams({}); setLabel(""); }}>
             {Object.entries(groups).map(([grp, items]) => items.length > 0 && (
-              <optgroup key={grp} label={`── ${grp} ──`}>
+              <optgroup key={grp} label={`â”€â”€ ${grp} â”€â”€`}>
                 {items.map(([k, t]) => (
                   <option key={k} value={k}>
                     {t.label}{t.intradayOnly ? " (intraday)" : ""}{t.subPane ? " [sub-pane]" : ""}
@@ -331,7 +331,7 @@ function AddIndicatorModal({ types, onClose }: { types: IndicatorTypesMap; onClo
           <button onClick={onClose} className="flex-1 py-2 bg-border rounded text-sm text-gray-300 hover:bg-gray-600">Cancel</button>
           <button onClick={() => mut.mutate()} disabled={mut.isPending}
             className="flex-1 py-2 btn-brand-grad disabled:opacity-50 rounded text-sm font-semibold transition-colors">
-            {mut.isPending ? "Adding…" : "Add Indicator"}
+            {mut.isPending ? "Addingâ€¦" : "Add Indicator"}
           </button>
         </div>
       </div>
@@ -339,7 +339,7 @@ function AddIndicatorModal({ types, onClose }: { types: IndicatorTypesMap; onClo
   );
 }
 
-// ── Strategy Trading Tab ───────────────────────────────────────────────────────
+// â”€â”€ Strategy Trading Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function LogicSection({ name }: { name: string }) {
   const logic = STRATEGY_LOGIC[name];
@@ -496,7 +496,7 @@ function StrategyTradingTab() {
                       <button onClick={() => setShowLogic(showingLogic ? null : name)}
                         className={clsx("flex-1 py-1 rounded text-xs font-medium transition-colors",
                           showingLogic ? "bg-brand/20 text-brand" : "bg-surface border border-border text-gray-400 hover:text-white")}>
-                        {showingLogic ? "▲ Hide Logic" : "▼ Show Logic"}
+                        {showingLogic ? "â–² Hide Logic" : "â–¼ Show Logic"}
                       </button>
                       {!isBuiltin && (
                         <button className="py-1 px-2 bg-loss/20 hover:bg-loss/40 text-loss rounded text-xs"
@@ -522,7 +522,7 @@ function StrategyTradingTab() {
   );
 }
 
-// ── Strategy Indicators Tab ────────────────────────────────────────────────────
+// â”€â”€ Strategy Indicators Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function StrategyIndicatorsTab() {
   const qc = useQueryClient();
@@ -581,8 +581,8 @@ function StrategyIndicatorsTab() {
                     )}
                     <p className="text-[10px] text-gray-500">
                       {typeInfo?.label ?? cfg.type}
-                      {typeInfo?.intradayOnly ? " · intraday" : ""}
-                      {typeInfo?.subPane ? " · sub-pane" : ""}
+                      {typeInfo?.intradayOnly ? " Â· intraday" : ""}
+                      {typeInfo?.subPane ? " Â· sub-pane" : ""}
                     </p>
                     {typeInfo?.desc && <p className="text-[10px] text-gray-600 truncate mt-0.5">{typeInfo.desc}</p>}
                   </div>
@@ -651,7 +651,7 @@ function StrategyIndicatorsTab() {
   );
 }
 
-// ── Strategy Monitor Tab ───────────────────────────────────────────────────────
+// â”€â”€ Strategy Monitor Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const SIM_COLORS = ["#6366f1","#22c55e","#f59e0b","#06b6d4","#ef4444","#ec4899"];
 
@@ -753,7 +753,7 @@ function MonitorTab() {
                       <span className="font-semibold text-sm">{label}</span>
                     </div>
                     <span className={clsx("text-[10px] font-medium", cfg.enabled ? "text-gain" : "text-gray-500")}>
-                      {cfg.enabled ? "● RUNNING" : "○ STOPPED"}
+                      {cfg.enabled ? "â— RUNNING" : "â—‹ STOPPED"}
                     </span>
                   </div>
                 </div>
@@ -765,19 +765,19 @@ function MonitorTab() {
                   <div>
                     <p className="text-gray-500">Win Rate</p>
                     <p className={clsx("font-semibold", winRate >= 50 ? "text-gain" : stats.trades > 0 ? "text-loss" : "text-gray-400")}>
-                      {stats.trades > 0 ? `${winRate.toFixed(1)}%` : "—"}
+                      {stats.trades > 0 ? `${winRate.toFixed(1)}%` : "â€”"}
                     </p>
                   </div>
                   <div>
                     <p className="text-gray-500">Total P&L</p>
                     <p className={clsx("font-semibold", stats.totalPnl >= 0 ? "text-gain" : "text-loss")}>
-                      {stats.trades > 0 ? fmt.currency(stats.totalPnl) : "—"}
+                      {stats.trades > 0 ? fmt.currency(stats.totalPnl) : "â€”"}
                     </p>
                   </div>
                   <div>
                     <p className="text-gray-500">Last Trade</p>
                     <p className="font-semibold text-white text-[10px]">
-                      {stats.lastTrade ? new Date(stats.lastTrade).toLocaleDateString() : "—"}
+                      {stats.lastTrade ? new Date(stats.lastTrade).toLocaleDateString() : "â€”"}
                     </p>
                   </div>
                 </div>
@@ -820,7 +820,7 @@ function MonitorTab() {
             </span>
           </div>
           {liveSignals.length === 0 ? (
-            <p className="text-xs text-gray-500">Waiting for strategy signals…</p>
+            <p className="text-xs text-gray-500">Waiting for strategy signalsâ€¦</p>
           ) : (
             <div className="space-y-1.5">
               {liveSignals.slice(0, 12).map((s, i) => (
@@ -869,7 +869,7 @@ function MonitorTab() {
   );
 }
 
-// ── Backtest types ─────────────────────────────────────────────────────────────
+// â”€â”€ Backtest types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface BtStats {
   totalTrades: number; openTrades: number;
@@ -888,7 +888,7 @@ interface BtResult { trades: BtTrade[]; stats: BtStats; params: Record<string, n
 interface BtSymbolData { barCount: number; results: Record<string, BtResult>; }
 interface BtResponse { timeframe: string; days?: number; symbols: string[]; data: Record<string, BtSymbolData>; }
 
-// ── Backtest constants ─────────────────────────────────────────────────────────
+// â”€â”€ Backtest constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const BT_STRAT_COLORS: Record<string, string> = {
   rsi_mean_reversion: "#f59e0b",
@@ -1017,7 +1017,7 @@ function SentimentBadge({ score }: { score?: number }) {
   return <span className="text-[9px] px-1 py-0.5 rounded bg-border text-gray-300 font-semibold">Neutral</span>;
 }
 
-// ── Backtest Monitor Tab ──────────────────────────────────────────────────────
+// â”€â”€ Backtest Monitor Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function BacktestTab() {
   const [symbol, setSymbol] = useState("SPY");
@@ -1052,7 +1052,7 @@ function BacktestTab() {
     ? `/backtest?symbols=${COMPARE_SYMS.join(",")}&strategy=${stratFilter}&days=${customDays}`
     : `/backtest?symbols=${COMPARE_SYMS.join(",")}&strategy=${stratFilter}&timeframe=${timeframe}`;
 
-  // Simulated backtest: all watchlist symbols × all strategies
+  // Simulated backtest: all watchlist symbols Ã— all strategies
   const { data: btData, isLoading: btLoading } = useQuery<BtResponse>({
     queryKey: ["backtest", COMPARE_SYMS.join(","), stratFilter, timeframe, timeframe === "custom" ? customDays : null],
     queryFn: () => api.get(btQueryString).then(r => r.data),
@@ -1066,7 +1066,7 @@ function BacktestTab() {
     enabled: mode === "live",
   });
 
-  // Agent news data (shared queryKey with Dashboard — deduped by React Query)
+  // Agent news data (shared queryKey with Dashboard â€” deduped by React Query)
   const { data: agentData } = useQuery<AgentNewsState>({
     queryKey: ["agent-status"],
     queryFn: () => api.get("/agent/status").then(r => r.data),
@@ -1147,7 +1147,7 @@ function BacktestTab() {
   const newsSnapshot  = agentData?.news?.snapshots?.find(s => s.symbol === symbol);
   const newsSentiment = agentData?.news_sentiments?.[symbol];
 
-  // ── News Sentiment Backtest state ─────────────────────────────────────────
+  // â”€â”€ News Sentiment Backtest state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [showNewsBacktest, setShowNewsBacktest] = useState(false);
   const [sampleEvery, setSampleEvery] = useState(2);
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
@@ -1204,7 +1204,7 @@ function BacktestTab() {
   return (
     <div className="space-y-4">
 
-      {/* ── Controls ── */}
+      {/* â”€â”€ Controls â”€â”€ */}
       <div className="bg-panel border border-border rounded-lg p-3 flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className="text-xs text-gray-400">Symbol</span>
@@ -1280,12 +1280,12 @@ function BacktestTab() {
         </div>
       </div>
 
-      {/* ══ SIMULATED BACKTEST ══ */}
+      {/* â•â• SIMULATED BACKTEST â•â• */}
       {mode === "simulated" && (
         <>
           {btLoading ? (
             <div className="flex items-center justify-center py-16 text-gray-500 text-sm">
-              Running strategy simulations on {COMPARE_SYMS.join(", ")}…
+              Running strategy simulations on {COMPARE_SYMS.join(", ")}â€¦
             </div>
           ) : !btData ? (
             <div className="flex items-center justify-center py-16 text-gray-500 text-sm">No backtest data.</div>
@@ -1294,7 +1294,7 @@ function BacktestTab() {
               {/* Strategy performance cards */}
               <div>
                 <p className="text-[10px] uppercase tracking-widest text-gray-500 mb-2">
-                  Strategy Performance — {symbol} ({timeframe === "custom" ? `${customDays}d` : timeframe.toUpperCase()})
+                  Strategy Performance â€” {symbol} ({timeframe === "custom" ? `${customDays}d` : timeframe.toUpperCase()})
                 </p>
                 <div className="grid grid-cols-3 gap-3">
                   {["rsi_mean_reversion","ema_crossover","vwap_breakout"].map((strat, i) => {
@@ -1312,7 +1312,7 @@ function BacktestTab() {
                           {s && s.totalTrades > 0 && (
                             <span className={clsx("text-[10px] font-bold px-2 py-0.5 rounded",
                               s.totalPnlPct > 0 ? "bg-gain/20 text-gain" : "bg-loss/20 text-loss")}>
-                              {s.totalPnlPct > 0 ? "✓ Profitable" : "✗ Losing"}
+                              {s.totalPnlPct > 0 ? "âœ“ Profitable" : "âœ— Losing"}
                             </span>
                           )}
                         </div>
@@ -1320,7 +1320,7 @@ function BacktestTab() {
                           <p className="text-xs text-gray-500 italic">No signals in period</p>
                         ) : (
                           <>
-                            {/* Headline row — 3 big numbers */}
+                            {/* Headline row â€” 3 big numbers */}
                             <div className="grid grid-cols-3 gap-2 mb-3">
                               <div className="bg-surface rounded-md p-2 text-center">
                                 <p className="text-[9px] uppercase tracking-widest text-gray-500 mb-0.5">Return</p>
@@ -1329,7 +1329,7 @@ function BacktestTab() {
                               <div className="bg-surface rounded-md p-2 text-center">
                                 <p className="text-[9px] uppercase tracking-widest text-gray-500 mb-0.5">Max DD</p>
                                 <p className={clsx("font-bold text-sm", s.maxDrawdownPct > 0 ? "text-loss" : "text-gray-400")}>
-                                  {s.maxDrawdownPct > 0 ? `-${s.maxDrawdownPct.toFixed(2)}%` : "—"}
+                                  {s.maxDrawdownPct > 0 ? `-${s.maxDrawdownPct.toFixed(2)}%` : "â€”"}
                                 </p>
                               </div>
                               <div className="bg-surface rounded-md p-2 text-center">
@@ -1348,7 +1348,7 @@ function BacktestTab() {
                               </span>
                             </div>
 
-                            {/* Detail grid — 2 col */}
+                            {/* Detail grid â€” 2 col */}
                             <div className="grid grid-cols-2 gap-y-2 text-xs">
                               <div>
                                 <p className="text-gray-500">Win Rate</p>
@@ -1374,23 +1374,23 @@ function BacktestTab() {
                               </div>
                               <div>
                                 <p className="text-gray-500">Avg Win</p>
-                                <p className="text-gain font-semibold">{s.wins > 0 ? fmtPct(s.avgWin) : "—"}</p>
+                                <p className="text-gain font-semibold">{s.wins > 0 ? fmtPct(s.avgWin) : "â€”"}</p>
                               </div>
                               <div>
                                 <p className="text-gray-500">Avg Loss</p>
-                                <p className="text-loss font-semibold">{s.losses > 0 ? fmtPct(s.avgLoss) : "—"}</p>
+                                <p className="text-loss font-semibold">{s.losses > 0 ? fmtPct(s.avgLoss) : "â€”"}</p>
                               </div>
                               <div>
                                 <p className="text-gray-500">Best Trade</p>
-                                <p className="text-gain font-semibold">{s.totalTrades > 0 ? fmtPct(s.bestTradePct) : "—"}</p>
+                                <p className="text-gain font-semibold">{s.totalTrades > 0 ? fmtPct(s.bestTradePct) : "â€”"}</p>
                               </div>
                               <div>
                                 <p className="text-gray-500">Worst Trade</p>
-                                <p className="text-loss font-semibold">{s.totalTrades > 0 ? fmtPct(s.worstTradePct) : "—"}</p>
+                                <p className="text-loss font-semibold">{s.totalTrades > 0 ? fmtPct(s.worstTradePct) : "â€”"}</p>
                               </div>
                             </div>
 
-                            {/* Unrealized P&L — only if open positions exist */}
+                            {/* Unrealized P&L â€” only if open positions exist */}
                             {s.openTrades > 0 && (
                               <div className="mt-3 flex items-center justify-between border-t border-border pt-2 text-xs">
                                 <span className="text-gray-500">Unrealized ({s.openTrades} open)</span>
@@ -1411,7 +1411,7 @@ function BacktestTab() {
               {pnlCurve.length > 1 && (
                 <div className="bg-panel border border-border rounded-lg p-4">
                   <p className="text-xs text-gray-500 uppercase tracking-widest mb-3">
-                    Cumulative Return (%) — {symbol}
+                    Cumulative Return (%) â€” {symbol}
                   </p>
                   <ResponsiveContainer width="100%" height={160}>
                     <LineChart data={pnlCurve}>
@@ -1432,7 +1432,7 @@ function BacktestTab() {
               <div className="bg-panel border border-border rounded-lg overflow-hidden">
                 <div className="px-4 py-2 border-b border-border flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-3">
-                    <span className="text-xs text-gray-400">{symbol} — simulated entry/exit markers</span>
+                    <span className="text-xs text-gray-400">{symbol} â€” simulated entry/exit markers</span>
                     {lastBar && <span className="text-xs text-gray-600 font-mono">Last: {fmt.currency(lastBar.close)}</span>}
                   </div>
                   <div className="flex items-center gap-3 text-[10px] text-gray-500">
@@ -1460,7 +1460,7 @@ function BacktestTab() {
                   </div>
                 </div>
                 {chartLoading ? (
-                  <div className="flex items-center justify-center text-gray-500 text-sm" style={{ height: 400 }}>Loading chart…</div>
+                  <div className="flex items-center justify-center text-gray-500 text-sm" style={{ height: 400 }}>Loading chartâ€¦</div>
                 ) : bars.length === 0 ? (
                   <div className="flex items-center justify-center text-gray-500 text-sm" style={{ height: 400 }}>No data for {symbol}</div>
                 ) : (
@@ -1476,7 +1476,7 @@ function BacktestTab() {
               {/* Multi-symbol comparison table */}
               <div className="bg-panel border border-border rounded-lg overflow-hidden">
                 <div className="px-4 py-3 border-b border-border">
-                  <p className="text-xs text-gray-500 uppercase tracking-widest">Strategy × Symbol Comparison — {timeframe.toUpperCase()}</p>
+                  <p className="text-xs text-gray-500 uppercase tracking-widest">Strategy Ã— Symbol Comparison â€” {timeframe.toUpperCase()}</p>
                   <p className="text-[10px] text-gray-600 mt-0.5">Simulated total return %. wr = win rate, t = trades.</p>
                 </div>
                 <div className="overflow-x-auto">
@@ -1502,12 +1502,12 @@ function BacktestTab() {
                             const r = btData.data[sym]?.results[strat];
                             const s = r?.stats;
                             if (!s || s.totalTrades === 0) {
-                              return <td key={sym} className="text-center px-3 py-2.5 text-gray-600">—</td>;
+                              return <td key={sym} className="text-center px-3 py-2.5 text-gray-600">â€”</td>;
                             }
                             return (
                               <td key={sym} className={clsx("text-center px-3 py-2.5", sym === symbol && "bg-brand/5")}>
                                 <div className={clsx("font-semibold", pnlPctColor(s.totalPnlPct))}>{fmtPct(s.totalPnlPct)}</div>
-                                <div className="text-[10px] text-gray-500">{s.winRate.toFixed(0)}%wr · {s.totalTrades}t</div>
+                                <div className="text-[10px] text-gray-500">{s.winRate.toFixed(0)}%wr Â· {s.totalTrades}t</div>
                               </td>
                             );
                           })}
@@ -1522,8 +1522,8 @@ function BacktestTab() {
               {symbolBt && Object.values(symbolBt.results).some(r => r.trades.length > 0) && (
                 <div className="bg-panel border border-border rounded-lg overflow-hidden">
                   <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-                    <p className="text-xs text-gray-500 uppercase tracking-widest">Simulated Trade Log — {symbol}</p>
-                    <p className="text-[10px] text-gray-600">Enters next-bar open on signal · Exits next-bar open on reverse</p>
+                    <p className="text-xs text-gray-500 uppercase tracking-widest">Simulated Trade Log â€” {symbol}</p>
+                    <p className="text-[10px] text-gray-600">Enters next-bar open on signal Â· Exits next-bar open on reverse</p>
                   </div>
                   <div className="overflow-x-auto max-h-64 overflow-y-auto">
                     <table className="w-full text-xs">
@@ -1569,12 +1569,12 @@ function BacktestTab() {
         </>
       )}
 
-      {/* ── News Intelligence (agent pipeline output for selected symbol) ── */}
+      {/* â”€â”€ News Intelligence (agent pipeline output for selected symbol) â”€â”€ */}
       <div className="bg-panel border border-border rounded-lg overflow-hidden">
         <div className="px-4 py-3 border-b border-border flex items-center justify-between flex-wrap gap-2">
           <div>
-            <p className="text-xs text-gray-500 uppercase tracking-widest">News Intelligence — {symbol}</p>
-            <p className="text-[10px] text-gray-600 mt-0.5">Output from last agent pipeline run · refresh from Dashboard → Agents tab</p>
+            <p className="text-xs text-gray-500 uppercase tracking-widest">News Intelligence â€” {symbol}</p>
+            <p className="text-[10px] text-gray-600 mt-0.5">Output from last agent pipeline run Â· refresh from Dashboard â†’ Agents tab</p>
           </div>
           {agentData?.last_run_at && (
             <span className="text-[10px] text-gray-600 font-mono">
@@ -1585,12 +1585,12 @@ function BacktestTab() {
 
         {(!agentData || (!newsSnapshot && !newsSentiment)) ? (
           <p className="px-4 py-8 text-sm text-gray-500 text-center">
-            No agent data for {symbol} — run the pipeline from Dashboard → Agents tab first.
+            No agent data for {symbol} â€” run the pipeline from Dashboard â†’ Agents tab first.
           </p>
         ) : (
           <div className="grid grid-cols-2 divide-x divide-border">
 
-            {/* ── News Fetch ── */}
+            {/* â”€â”€ News Fetch â”€â”€ */}
             <div className="p-4 space-y-2">
               <div className="flex items-center gap-2 mb-3">
                 <p className="text-[10px] uppercase tracking-widest text-brand/70 font-semibold">News Fetch</p>
@@ -1603,7 +1603,7 @@ function BacktestTab() {
                 )}
               </div>
               {!newsSnapshot ? (
-                <p className="text-xs text-gray-500">No fetch data — symbol may not have been in the last run.</p>
+                <p className="text-xs text-gray-500">No fetch data â€” symbol may not have been in the last run.</p>
               ) : (newsSnapshot.items ?? []).length === 0 ? (
                 <p className="text-xs text-gray-500">No articles found in last 24h.</p>
               ) : (
@@ -1613,7 +1613,7 @@ function BacktestTab() {
                     <p className="text-gray-200 line-clamp-2">{item.headline || "Untitled"}</p>
                     <p className="text-[10px] text-gray-500 mt-0.5">
                       {item.source || "Unknown"}
-                      {item.created_at ? ` · ${new Date(item.created_at).toLocaleString()}` : ""}
+                      {item.created_at ? ` Â· ${new Date(item.created_at).toLocaleString()}` : ""}
                     </p>
                     {item.summary && <p className="text-[10px] text-gray-400 mt-0.5 line-clamp-1">{item.summary}</p>}
                   </a>
@@ -1621,14 +1621,14 @@ function BacktestTab() {
               )}
             </div>
 
-            {/* ── News Analysis ── */}
+            {/* â”€â”€ News Analysis â”€â”€ */}
             <div className="p-4 space-y-2.5">
               <div className="flex items-center gap-2 mb-3">
                 <p className="text-[10px] uppercase tracking-widest text-purple-400/70 font-semibold">News Analysis (LLM)</p>
                 {newsSentiment && <SentimentBadge score={newsSentiment.overall_sentiment} />}
               </div>
               {!newsSentiment ? (
-                <p className="text-xs text-gray-500">No analysis data — symbol may not have been in the last run.</p>
+                <p className="text-xs text-gray-500">No analysis data â€” symbol may not have been in the last run.</p>
               ) : (
                 <>
                   <div className="flex items-center gap-3 text-xs">
@@ -1667,7 +1667,7 @@ function BacktestTab() {
                       <div>
                         <p className="text-[9px] uppercase tracking-wide text-loss/60 mb-1">Bearish</p>
                         {newsSentiment.bearish_reasons.map((r, i) => (
-                          <p key={i} className="text-loss/80 leading-tight">− {r}</p>
+                          <p key={i} className="text-loss/80 leading-tight">âˆ’ {r}</p>
                         ))}
                       </div>
                     ) : null}
@@ -1676,7 +1676,7 @@ function BacktestTab() {
                     <div>
                       <p className="text-[10px] uppercase tracking-wide text-yellow-500/60 mb-1">Risk Events</p>
                       {newsSentiment.risk_events.map((r, i) => (
-                        <p key={i} className="text-[10px] text-yellow-400/80 leading-tight">⚠ {r}</p>
+                        <p key={i} className="text-[10px] text-yellow-400/80 leading-tight">âš  {r}</p>
                       ))}
                     </div>
                   ) : null}
@@ -1688,15 +1688,15 @@ function BacktestTab() {
         )}
       </div>
 
-      {/* ══ LIVE TRADES ══ */}
+      {/* â•â• LIVE TRADES â•â• */}
       {mode === "live" && (
         <>
           <div className="grid grid-cols-5 gap-3">
             {[
               { label: "Window", value: timeframe.toUpperCase() },
-              { label: "Last Close", value: lastBar ? fmt.currency(lastBar.close) : "—", sub: `${bars.length} bars` },
-              { label: "Realized P&L", value: liveStats.count > 0 ? fmt.currency(liveStats.pnl) : "—", color: liveStats.pnl >= 0 ? "text-gain" : "text-loss" },
-              { label: "Win Rate", value: liveStats.count > 0 ? `${liveStats.winRate.toFixed(1)}%` : "—", color: liveStats.winRate >= 50 ? "text-gain" : "text-loss" },
+              { label: "Last Close", value: lastBar ? fmt.currency(lastBar.close) : "â€”", sub: `${bars.length} bars` },
+              { label: "Realized P&L", value: liveStats.count > 0 ? fmt.currency(liveStats.pnl) : "â€”", color: liveStats.pnl >= 0 ? "text-gain" : "text-loss" },
+              { label: "Win Rate", value: liveStats.count > 0 ? `${liveStats.winRate.toFixed(1)}%` : "â€”", color: liveStats.winRate >= 50 ? "text-gain" : "text-loss" },
               { label: "Trades", value: `${liveStats.count} (${liveStats.wins}W/${liveStats.losses}L)` },
             ].map(({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) => (
               <div key={label} className="bg-panel border border-border rounded-lg px-4 py-3">
@@ -1709,7 +1709,7 @@ function BacktestTab() {
 
           <div className="bg-panel border border-border rounded-lg overflow-hidden">
             {chartLoading ? (
-              <div className="flex items-center justify-center text-gray-500 text-sm" style={{ height: 400 }}>Loading chart…</div>
+              <div className="flex items-center justify-center text-gray-500 text-sm" style={{ height: 400 }}>Loading chartâ€¦</div>
             ) : bars.length === 0 ? (
               <div className="flex items-center justify-center text-gray-500 text-sm" style={{ height: 400 }}>No data for {symbol}</div>
             ) : (
@@ -1723,8 +1723,8 @@ function BacktestTab() {
           {liveTrades.length > 0 ? (
             <div className="bg-panel border border-border rounded-lg overflow-hidden">
               <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-                <p className="text-xs text-gray-500 uppercase tracking-widest">Live Trades — {symbol} ({liveTrades.length})</p>
-                <p className="text-xs text-gray-600">{liveStats.wins}W · {liveStats.losses}L · {liveStats.count > 0 ? liveStats.winRate.toFixed(1) : 0}% wr</p>
+                <p className="text-xs text-gray-500 uppercase tracking-widest">Live Trades â€” {symbol} ({liveTrades.length})</p>
+                <p className="text-xs text-gray-600">{liveStats.wins}W Â· {liveStats.losses}L Â· {liveStats.count > 0 ? liveStats.winRate.toFixed(1) : 0}% wr</p>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
@@ -1752,7 +1752,7 @@ function BacktestTab() {
                         <td className="px-3 py-2">{t.qty}</td>
                         <td className="px-3 py-2">{fmt.currency(t.price)}</td>
                         <td className={clsx("px-3 py-2 font-semibold", t.pnl !== null ? pnlColor(t.pnl) : "text-gray-500")}>
-                          {t.pnl !== null ? fmt.currency(t.pnl) : "—"}
+                          {t.pnl !== null ? fmt.currency(t.pnl) : "â€”"}
                         </td>
                       </tr>
                     ))}
@@ -1767,20 +1767,20 @@ function BacktestTab() {
           )}
         </>
       )}
-      {/* ── News Sentiment Backtest ── */}
+      {/* â”€â”€ News Sentiment Backtest â”€â”€ */}
       <div className="bg-panel border border-border rounded-lg overflow-hidden">
         <div className="px-4 py-3 border-b border-border flex items-center justify-between flex-wrap gap-2">
           <div>
-            <p className="text-xs text-gray-500 uppercase tracking-widest">News Sentiment Backtest — {symbol}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-widest">News Sentiment Backtest â€” {symbol}</p>
             <p className="text-[10px] text-gray-600 mt-0.5">
-              Fetches historical news per day · runs LLM sentiment analysis · compares direction vs actual next-day return
+              Fetches historical news per day Â· runs LLM sentiment analysis Â· compares direction vs actual next-day return
             </p>
           </div>
           <button
             onClick={() => setShowNewsBacktest(v => !v)}
             className="text-xs bg-surface border border-border px-3 py-1.5 rounded-lg text-gray-400 hover:text-white transition-colors"
           >
-            {showNewsBacktest ? "Hide ▴" : "Show ▾"}
+            {showNewsBacktest ? "Hide â–´" : "Show â–¾"}
           </button>
         </div>
 
@@ -1811,9 +1811,9 @@ function BacktestTab() {
                 <button
                   onClick={() => { setNbStartDate(btStartDate); setNbEndDate(btEndDate); }}
                   className="text-[10px] text-brand/70 hover:text-brand transition-colors underline-offset-2 hover:underline"
-                  title={`Set to current timeframe (${btStartDate} → ${btEndDate})`}
+                  title={`Set to current timeframe (${btStartDate} â†’ ${btEndDate})`}
                 >
-                  ↻ use timeframe
+                  â†» use timeframe
                 </button>
               </div>
 
@@ -1845,15 +1845,15 @@ function BacktestTab() {
                     <option key={n} value={n}>{n === 1 ? "Every day" : `Every ${n} days`}</option>
                   ))}
                 </select>
-                <span className="text-[10px] text-gray-600">≈ {Math.ceil(nbDays / sampleEvery)} LLM calls</span>
+                <span className="text-[10px] text-gray-600">â‰ˆ {Math.ceil(nbDays / sampleEvery)} LLM calls</span>
                 <button
                   onClick={() => nbRunMutation.mutate()}
                   disabled={nbStatus?.status === "running" || nbStatus?.status === "queued" || !nbStartDate || !nbEndDate}
                   className="px-3 py-1.5 bg-brand text-white text-xs rounded-lg hover:bg-brand/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {nbStatus?.status === "running"
-                    ? `Running… ${nbStatus.step ?? 0}/${nbStatus.total ?? "?"}`
-                    : nbStatus?.status === "queued" ? "Queued…"
+                    ? `Runningâ€¦ ${nbStatus.step ?? 0}/${nbStatus.total ?? "?"}`
+                    : nbStatus?.status === "queued" ? "Queuedâ€¦"
                     : "Run Analysis"}
                 </button>
               </div>
@@ -1863,7 +1863,7 @@ function BacktestTab() {
             {nbStatus?.status === "running" && nbStatus.current_day && (
               <div className="flex items-center gap-2 text-xs text-brand">
                 <span className="w-2 h-2 rounded-full bg-brand animate-pulse flex-shrink-0" />
-                Processing {nbStatus.current_day}… ({nbStatus.step ?? 0}/{nbStatus.total ?? "?"} days)
+                Processing {nbStatus.current_day}â€¦ ({nbStatus.step ?? 0}/{nbStatus.total ?? "?"} days)
               </div>
             )}
             {nbStatus?.status === "error" && (
@@ -1876,10 +1876,10 @@ function BacktestTab() {
                 {/* Sentiment chart */}
                 <div className="bg-surface border border-border rounded-lg overflow-hidden">
                   <div className="px-3 py-2 border-b border-border/60 flex items-center gap-4">
-                    <p className="text-[11px] text-gray-500 uppercase tracking-wide">Price + Sentiment Signals — {symbol}</p>
+                    <p className="text-[11px] text-gray-500 uppercase tracking-wide">Price + Sentiment Signals â€” {symbol}</p>
                     <span className="flex items-center gap-1 text-[10px] text-gain"><span className="inline-block w-0 h-0 border-l-[4px] border-r-[4px] border-b-[7px] border-l-transparent border-r-transparent border-b-gain" /> Bullish signal</span>
                     <span className="flex items-center gap-1 text-[10px] text-loss"><span className="inline-block w-0 h-0 border-l-[4px] border-r-[4px] border-t-[7px] border-l-transparent border-r-transparent border-t-loss" /> Bearish signal</span>
-                    <span className="ml-auto text-[10px] text-gray-600">{sentimentMarkers.length} signals ({nbResults.stats.bullish_days}↑ {nbResults.stats.bearish_days}↓)</span>
+                    <span className="ml-auto text-[10px] text-gray-600">{sentimentMarkers.length} signals ({nbResults.stats.bullish_days}â†‘ {nbResults.stats.bearish_days}â†“)</span>
                   </div>
                   <div style={{ height: 280 }}>
                     <PriceChart
@@ -1893,18 +1893,18 @@ function BacktestTab() {
                   </div>
                 </div>
 
-                {/* Accuracy grid — 1d / 3d / 5d */}
+                {/* Accuracy grid â€” 1d / 3d / 5d */}
                 <div className="bg-surface border border-border rounded-lg overflow-hidden">
                   <div className="px-4 py-2 border-b border-border/60">
-                    <p className="text-[10px] text-gray-500 uppercase tracking-wide">Directional Accuracy · {nbResults.stats.directional_days} signals · neutral threshold ±0.15</p>
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide">Directional Accuracy Â· {nbResults.stats.directional_days} signals Â· neutral threshold Â±0.15</p>
                   </div>
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="text-gray-500 border-b border-border bg-[#0d1117]">
                         <th className="text-left px-4 py-2 font-medium">Horizon</th>
                         <th className="text-center px-4 py-2 font-medium">Overall</th>
-                        <th className="text-center px-4 py-2 font-medium">Bullish ({nbResults.stats.bullish_days}↑)</th>
-                        <th className="text-center px-4 py-2 font-medium">Bearish ({nbResults.stats.bearish_days}↓)</th>
+                        <th className="text-center px-4 py-2 font-medium">Bullish ({nbResults.stats.bullish_days}â†‘)</th>
+                        <th className="text-center px-4 py-2 font-medium">Bearish ({nbResults.stats.bearish_days}â†“)</th>
                         <th className="text-center px-4 py-2 font-medium">Correlation</th>
                       </tr>
                     </thead>
@@ -1925,7 +1925,7 @@ function BacktestTab() {
                             <td className={clsx("px-4 py-2.5 text-center font-bold text-sm", acc(oaV))}>{oaV}%</td>
                             <td className={clsx("px-4 py-2.5 text-center font-semibold", acc(baV))}>{baV}%</td>
                             <td className={clsx("px-4 py-2.5 text-center font-semibold", acc(braV))}>{braV}%</td>
-                            <td className="px-4 py-2.5 text-center font-mono text-gray-400">{cV != null ? cV.toFixed(3) : "—"}</td>
+                            <td className="px-4 py-2.5 text-center font-mono text-gray-400">{cV != null ? cV.toFixed(3) : "â€”"}</td>
                           </tr>
                         );
                       })}
@@ -1949,7 +1949,7 @@ function BacktestTab() {
                       <thead className="sticky top-0 bg-[#0d1117] z-10">
                         <tr className="text-gray-500 border-b border-border">
                           <th className="text-left px-3 py-2 font-medium w-4" />
-                          {["Decision Date", "News Window", "Articles", "Sentiment", "Conf.", "1d Return", "3d Return", "5d Return", "1d ✓", "3d ✓", "5d ✓"].map(h => (
+                          {["Decision Date", "News Window", "Articles", "Sentiment", "Conf.", "1d Return", "3d Return", "5d Return", "1d âœ“", "3d âœ“", "5d âœ“"].map(h => (
                             <th key={h} className="text-left px-3 py-2 font-medium">{h}</th>
                           ))}
                         </tr>
@@ -1970,14 +1970,14 @@ function BacktestTab() {
                                 )}
                               >
                                 <td className="px-3 py-1.5 text-gray-600 text-center">
-                                  {hasDetail ? (isOpen ? "▾" : "▸") : ""}
+                                  {hasDetail ? (isOpen ? "â–¾" : "â–¸") : ""}
                                 </td>
                                 <td className="px-3 py-1.5 text-gray-400 font-mono">{d.date}</td>
-                                <td className="px-3 py-1.5 text-gray-600 font-mono text-[9px]">{d.news_window ?? "—"}</td>
+                                <td className="px-3 py-1.5 text-gray-600 font-mono text-[9px]">{d.news_window ?? "â€”"}</td>
                                 <td className="px-3 py-1.5 text-gray-300">{d.articles_count}</td>
                                 <td className="px-3 py-1.5"><SentimentBadge score={d.sentiment_score} /></td>
                                 <td className="px-3 py-1.5 text-gray-500">
-                                  {d.articles_count > 0 ? `${(d.confidence * 100).toFixed(0)}%` : "—"}
+                                  {d.articles_count > 0 ? `${(d.confidence * 100).toFixed(0)}%` : "â€”"}
                                 </td>
                                 {([
                                   [d.ret_1d, d.correct_1d],
@@ -1986,14 +1986,14 @@ function BacktestTab() {
                                 ] as [number | null, boolean | null][]).flatMap(([ret, correct], ri) => [
                                   <td key={`ret${ri}`} className={clsx("px-3 py-1.5 font-mono font-semibold",
                                     ret != null ? (ret >= 0 ? "text-gain" : "text-loss") : "text-gray-600")}>
-                                    {ret != null ? `${ret >= 0 ? "+" : ""}${ret.toFixed(2)}%` : "—"}
+                                    {ret != null ? `${ret >= 0 ? "+" : ""}${ret.toFixed(2)}%` : "â€”"}
                                   </td>,
                                   <td key={`c${ri}`} className="px-3 py-1.5">
                                     {correct === null
-                                      ? <span className="text-gray-600 text-[10px]">{ri === 0 ? "neutral" : "—"}</span>
+                                      ? <span className="text-gray-600 text-[10px]">{ri === 0 ? "neutral" : "â€”"}</span>
                                       : correct
-                                      ? <span className="text-gain font-bold">✓</span>
-                                      : <span className="text-loss font-bold">✗</span>}
+                                      ? <span className="text-gain font-bold">âœ“</span>
+                                      : <span className="text-loss font-bold">âœ—</span>}
                                   </td>,
                                 ])}
                               </tr>
@@ -2006,7 +2006,7 @@ function BacktestTab() {
                                       {/* News window label */}
                                       {d.news_window && (
                                         <p className="text-[9px] text-gray-600 font-mono">
-                                          News fetched: {d.news_window} · {d.articles_count} article{d.articles_count !== 1 ? "s" : ""}
+                                          News fetched: {d.news_window} Â· {d.articles_count} article{d.articles_count !== 1 ? "s" : ""}
                                         </p>
                                       )}
 
@@ -2041,7 +2041,7 @@ function BacktestTab() {
                                             <div>
                                               <p className="text-[9px] uppercase tracking-wide text-loss/60 mb-1 font-semibold">Bearish Reasons</p>
                                               {d.bearish_reasons!.map((r, ri) => (
-                                                <p key={ri} className="text-[10px] text-loss/80 leading-snug">− {r}</p>
+                                                <p key={ri} className="text-[10px] text-loss/80 leading-snug">âˆ’ {r}</p>
                                               ))}
                                             </div>
                                           )}
@@ -2053,7 +2053,7 @@ function BacktestTab() {
                                         <div>
                                           <p className="text-[9px] uppercase tracking-wide text-yellow-500/60 mb-1 font-semibold">Risk Events</p>
                                           {d.risk_events!.map((r, ri) => (
-                                            <p key={ri} className="text-[10px] text-yellow-400/80 leading-snug">⚠ {r}</p>
+                                            <p key={ri} className="text-[10px] text-yellow-400/80 leading-snug">âš  {r}</p>
                                           ))}
                                         </div>
                                       )}
@@ -2101,7 +2101,7 @@ function BacktestTab() {
                   Click <span className="text-white font-semibold">Run Analysis</span> to evaluate how accurately the LLM news sentiment predicts next-day price direction for {symbol}.
                   <br />
                   <span className="text-gray-600 mt-1 block">
-                    Uses "{nbStartDate} → {nbEndDate}" · {nbDays}d · ≈{Math.ceil(nbDays / sampleEvery)} LLM calls · neutral threshold ±0.15
+                    Uses "{nbStartDate} â†’ {nbEndDate}" Â· {nbDays}d Â· â‰ˆ{Math.ceil(nbDays / sampleEvery)} LLM calls Â· neutral threshold Â±0.15
                   </span>
                 </p>
               )

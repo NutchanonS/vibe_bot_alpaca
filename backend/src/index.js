@@ -53,6 +53,7 @@ app.use("/api/backtest", authMiddleware, require("./routes/backtest"));
 app.use("/api/news",    authMiddleware, require("./routes/news"));
 app.use("/api/agent",   authMiddleware, require("./routes/agent"));
 app.use("/api/scanner",       authMiddleware, require("./routes/scanner"));
+app.use("/api/momentum",      authMiddleware, require("./routes/momentum_scanner"));
 app.use("/api/news-backtest", authMiddleware, require("./routes/news_backtest"));
 
 // Start WebSocket relay

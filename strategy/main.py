@@ -53,6 +53,14 @@ except Exception as exc:
     _scan_pipeline = None
     log.warning("Scan pipeline unavailable: %s", exc)
 
+try:
+    from scanner.momentum_scan_pipeline import MomentumScanPipeline
+
+    _momentum_pipeline = MomentumScanPipeline()
+except Exception as exc:
+    _momentum_pipeline = None
+    log.warning("Momentum scan pipeline unavailable: %s", exc)
+
 
 def _execute_signal(signal) -> None:
     if not signal.is_actionable():
@@ -241,6 +249,55 @@ def poll_scanner_run_requests() -> None:
         }), ex=3600)
 
 
+def poll_momentum_scan_requests() -> None:
+    try:
+        raw = _redis.get("momentum:run_request")
+        if not raw:
+            return
+
+        _redis.delete("momentum:run_request")
+        req = json.loads(raw) if raw else {}
+
+        stage1_top_n = max(5,  min(int(req.get("stage1_top_n", 20)), 200))
+        stage2_top_n = max(3,  min(int(req.get("stage2_top_n", 10)), 50))
+
+        if _momentum_pipeline is None:
+            _redis.set("momentum:status", json.dumps({
+                "status": "error",
+                "error": "Momentum scan pipeline not available.",
+            }), ex=3600)
+            return
+
+        _redis.set("momentum:status", json.dumps({
+            "status":       "running",
+            "started_at":   datetime.now(timezone.utc).isoformat(),
+            "stage1_top_n": stage1_top_n,
+            "stage2_top_n": stage2_top_n,
+        }), ex=3600)
+
+        results = _momentum_pipeline.run(
+            stage1_top_n=stage1_top_n,
+            stage2_top_n=stage2_top_n,
+        )
+        _redis.set("momentum:results", json.dumps(results), ex=3600)
+        _redis.set("momentum:status", json.dumps({
+            "status":         "ok",
+            "completed_at":   results.get("completed_at"),
+            "universe_size":  results.get("universe_size"),
+            "stage1_count":   results.get("stage1_count"),
+            "stage2_count":   results.get("stage2_count"),
+            "candidates_found": len(results.get("ranked", [])),
+        }), ex=3600)
+        log.info("Momentum scan completed — %d ranked candidates", len(results.get("ranked", [])))
+
+    except Exception as exc:
+        log.error("Momentum scan pipeline failed: %s", exc)
+        _redis.set("momentum:status", json.dumps({
+            "status": "error",
+            "error":  str(exc),
+        }), ex=3600)
+
+
 def poll_news_backtest_requests() -> None:
     try:
         raw = _redis.get("news_backtest:run_request")
@@ -333,6 +390,9 @@ def main() -> None:
 
     # Scanner trigger poll from backend /api/scanner/run
     scheduler.add_job(poll_scanner_run_requests, IntervalTrigger(seconds=15), id="scanner_run_poll")
+
+    # Momentum scan trigger poll from backend /api/momentum/run
+    scheduler.add_job(poll_momentum_scan_requests, IntervalTrigger(seconds=15), id="momentum_scan_poll")
 
     # News sentiment backtest trigger poll
     scheduler.add_job(poll_news_backtest_requests, IntervalTrigger(seconds=15), id="news_backtest_poll")
