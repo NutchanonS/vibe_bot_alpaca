@@ -14,6 +14,24 @@ const FEATURES = [
     tags:  ["live feeds", "paper · live"],
   },
   {
+    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-5 h-5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" strokeLinecap="round"/></svg>,
+    title: "6-Agent AI Pipeline",
+    desc:  "LangGraph StateGraph: Market Data → QA → News → Sentiment → Signal → Risk. Each agent writes typed state, flows downstream.",
+    tags:  ["langgraph", "gpt-4o-mini", "pydantic"],
+  },
+  {
+    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-5 h-5"><path d="M3 6h18M3 12h18M3 18h18" strokeLinecap="round"/><circle cx="7" cy="6" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="17" cy="18" r="1.5" fill="currentColor"/></svg>,
+    title: "Waterfall Scanner",
+    desc:  "6-stage pipeline over S&P 100 + ETFs: indicator scoring, deep confirmation, news fetch, LLM sentiment, signal, and risk allocation.",
+    tags:  ["~110 symbols", "6 stages", "~$0.03/scan"],
+  },
+  {
+    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-5 h-5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+    title: "Momentum Scanner",
+    desc:  "5-stage catalyst-driven pipeline on live movers: % change + RVOL hard gates, quality screen, 4h news, catalyst LLM, intraday signal with T1/T2 targets.",
+    tags:  ["live movers", "catalyst LLM", "20–90 min hold"],
+  },
+  {
     icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-5 h-5"><path d="M12 3v18M5 8l7-5 7 5M5 16l7 5 7-5" strokeLinecap="round" strokeLinejoin="round"/></svg>,
     title: "Risk Manager",
     desc:  "Position sizing as a % of equity, per-trade caps, and a hard max-drawdown kill-switch that flattens everything.",
@@ -22,7 +40,7 @@ const FEATURES = [
   {
     icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-5 h-5"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" strokeLinecap="round"/></svg>,
     title: "PostgreSQL + Redis",
-    desc:  "Every trade, order, and snapshot persisted in Postgres. Redis caches live prices for sub-millisecond reads.",
+    desc:  "Every trade, order, and snapshot persisted in Postgres. Redis caches live prices and scanner results for sub-millisecond reads.",
     tags:  ["trade history", "live cache"],
   },
   {
@@ -63,7 +81,7 @@ export default function FeatureGrid() {
 
         <div ref={gridRef}
              className="ld-sr ld-sr-2 grid gap-[18px]"
-             style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+             style={{ gridTemplateColumns: "repeat(3, 1fr)", gridAutoRows: "1fr" }}>
           {FEATURES.map(f => (
             <div
               key={f.title}

@@ -1,10 +1,18 @@
 # Alpaca Trading Bot
 
-![alt text](./readme_img/image.png)
+## Home Page
 
-![alt text](./readme_img/image-5.png)
+![Landing page — hero & feature overview](./readme_img/landing.png)
 
-![alt text](./readme_img/image-4.png)
+![Landing page — AI agent pipeline & scanners](./readme_img/landing-2.png)
+
+## Dashboard
+
+![Dashboard — main trading view](./readme_img/image.png)
+
+![Dashboard — agents & scanner tabs](./readme_img/image-5.png)
+
+![Scanner — waterfall + momentum](./readme_img/image-4.png)
 
 Automated trading bot platform with:
 - Python strategy engine (`strategy/`)
@@ -14,11 +22,14 @@ Automated trading bot platform with:
 
 ## Tech Stack
 
-- **Strategy:** Python 3.12, `alpaca-py`, `apscheduler`, `pandas`
+- **Strategy:** Python 3.12, `alpaca-py`, `apscheduler`, `pandas`, `langgraph`, `openai`
 - **Backend:** Node.js 20, Express, Socket.IO, Redis, PostgreSQL (`pg`)
-- **Frontend:** React + TypeScript + Vite + TailwindCSS + lightweight-charts
+- **Frontend:** React + TypeScript + Vite + TailwindCSS + `lightweight-charts` + Recharts
+- **AI Pipeline:** LangGraph `StateGraph`, `gpt-4o-mini`, Pydantic structured output
+- **Scanners:** Waterfall (6-stage, S&P 100 + ETFs) + Momentum (5-stage, live movers)
 - **Infra:** Docker Compose, Nginx reverse proxy
-![alt text](./readme_img/image-2.png)
+
+![System architecture](./readme_img/image-2.png)
 
 ## Repository Structure
 
@@ -99,11 +110,33 @@ Key variables (see `.env.example` for full list):
 ## Strategy Notes
 
 Built-in strategies:
-- RSI Mean Reversion
-- EMA Crossover
-- VWAP Breakout
+- **RSI Mean Reversion** — 15m bars, RSI(14) oversold/overbought with optional Bollinger confirmation
+- **EMA Crossover** — 1h bars, EMA(9) vs EMA(21) with volume confirmation
+- **VWAP Breakout** — 5m bars, price above VWAP with volume z-score > 1.5
 
 All strategy signals are executed through `strategy/broker/order_manager.py`.
+
+## AI Agent Pipeline (LangGraph)
+
+Six agents wired into a `StateGraph`. Runs on schedule or via `POST /api/agent/run`:
+
+| Agent | Output | Cost |
+|---|---|---|
+| MarketDataFetcher | `market_snapshots` | free |
+| DataQA | `qa_result` | free |
+| NewsFetcher | `news_snapshots` | free |
+| NewsAnalysis | `news_sentiments` | ~$0.01 |
+| SignalSelection | `signal_selections` | ~$0.01 |
+| RiskAllocation | `risk_allocations` | ~$0.01 |
+
+## Scanners
+
+| Scanner | Universe | Stages | Use case |
+|---|---|---|---|
+| **Waterfall** | S&P 100 + ETFs (~110) | 6 | Technical setups, swing trades |
+| **Momentum** | Live movers (dynamic) | 5 | Catalyst-driven intraday (20–90 min) |
+
+Run via Scanner page → "Run Scan" or `POST /api/scanner/run` / `POST /api/momentum/run`.
 
 ![alt text](./readme_img/image-3.png)
 

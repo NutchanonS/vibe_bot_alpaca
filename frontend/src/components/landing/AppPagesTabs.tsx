@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 
 const APP_TABS = [
-  { id: "overview", label: "Overview", path: "/app", blurb: "Account snapshot, watchlist, and live charting." },
-  { id: "trading", label: "Trading", path: "/app/trading", blurb: "Manual order entry, watchlist controls, and order flow." },
-  { id: "strategies", label: "Strategies", path: "/app/strategies", blurb: "Strategy control center, indicators, monitor, and backtest." },
-  { id: "portfolio", label: "Portfolio", path: "/app/portfolio", blurb: "Allocation analytics, risk diagnostics, and holdings intelligence." },
-  { id: "history", label: "History", path: "/app/history", blurb: "Trade logs, cumulative curve, and performance records." },
+  { id: "overview",   label: "Overview",   path: "/app",                blurb: "Account snapshot, watchlist, and live charting." },
+  { id: "trading",    label: "Trading",    path: "/app/trading",        blurb: "Manual order entry, watchlist controls, and order flow." },
+  { id: "strategies", label: "Strategies", path: "/app/strategies",     blurb: "Strategy control center, indicators, monitor, and backtest." },
+  { id: "scanner",    label: "Scanner",    path: "/app/scanner",        blurb: "Waterfall Scanner (6 stages) and Momentum Scanner (5 stages) with AI signal + risk plan." },
+  { id: "portfolio",  label: "Portfolio",  path: "/app/portfolio",      blurb: "Allocation analytics, risk diagnostics, and holdings intelligence." },
+  { id: "history",    label: "History",    path: "/app/history",        blurb: "Trade logs, cumulative curve, and performance records." },
 ] as const;
 
 export default function AppPagesTabs() {

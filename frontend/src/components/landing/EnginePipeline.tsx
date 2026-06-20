@@ -7,15 +7,23 @@ const NODES = [
   },
   {
     num: "02", title: "Strategy Engine",
-    desc: "Pure-Python strategies compute indicators and emit BUY / SELL / HOLD signals.",
+    desc: "Pure-Python strategies (RSI, EMA, VWAP) compute indicators and emit BUY / SELL / HOLD signals.",
   },
   {
-    num: "03", title: "Risk Manager",
-    desc: "Position sizing, max-drawdown kill-switch, and per-trade exposure caps.",
+    num: "03", title: "AI Agent Pipeline",
+    desc: "6-agent LangGraph graph: market data → QA → news → sentiment → signal → risk — one typed state object flows through.",
   },
   {
-    num: "04", title: "Order Manager",
-    desc: "Places, tracks, and cancels orders through Alpaca. Every fill is persisted.",
+    num: "04", title: "Scanners",
+    desc: "Waterfall (S&P 100, 6 stages) and Momentum (live movers, 5 stages) — on-demand multi-symbol analysis.",
+  },
+  {
+    num: "05", title: "Risk Manager",
+    desc: "Position sizing, max-drawdown kill-switch, and per-trade exposure caps — hard rules override any LLM output.",
+  },
+  {
+    num: "06", title: "Order Manager",
+    desc: "Places, tracks, and cancels orders through Alpaca. Every fill is persisted to PostgreSQL.",
   },
 ];
 

@@ -1,15 +1,18 @@
-import Nav          from "../components/landing/Nav";
-import Hero         from "../components/landing/Hero";
-import Ticker       from "../components/landing/Ticker";
+import Nav            from "../components/landing/Nav";
+import Hero           from "../components/landing/Hero";
+import Ticker         from "../components/landing/Ticker";
 import EnginePipeline from "../components/landing/EnginePipeline";
-import StratSection from "../components/landing/StratSection";
-import ChartingDemo from "../components/landing/ChartingDemo";
-import AppPagesTabs from "../components/landing/AppPagesTabs";
-import Backtest     from "../components/landing/Backtest";
-import StatBand     from "../components/landing/StatBand";
-import FeatureGrid  from "../components/landing/FeatureGrid";
-import FinalCTA     from "../components/landing/FinalCTA";
-import Footer       from "../components/landing/Footer";
+import StratSection   from "../components/landing/StratSection";
+import AgentSection   from "../components/landing/AgentSection";
+import ScannerSection from "../components/landing/ScannerSection";
+import ChartingDemo   from "../components/landing/ChartingDemo";
+import AppPagesTabs   from "../components/landing/AppPagesTabs";
+import Backtest       from "../components/landing/Backtest";
+import StatBand       from "../components/landing/StatBand";
+import FeatureGrid    from "../components/landing/FeatureGrid";
+import SystemDiagram  from "../components/landing/SystemDiagram";
+import FinalCTA       from "../components/landing/FinalCTA";
+import Footer         from "../components/landing/Footer";
 
 export default function Landing() {
   return (
@@ -19,11 +22,14 @@ export default function Landing() {
       <Ticker />
       <EnginePipeline />
       <StratSection />
+      <AgentSection />
+      <ScannerSection />
       <ChartingDemo />
       <AppPagesTabs />
       <Backtest />
       <StatBand />
       <FeatureGrid />
+      <SystemDiagram />
       <FinalCTA />
       <Footer />
     </div>
