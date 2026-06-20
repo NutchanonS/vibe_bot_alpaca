@@ -32,6 +32,21 @@ interface IndicatorConfig {
   color: string; active: boolean;
 }
 interface IndicatorsMap { [id: string]: IndicatorConfig; }
+
+interface AgentNewsState {
+  last_run_at?: string | null;
+  news?: {
+    snapshots?: {
+      symbol: string; articles: number;
+      items?: { id?: number; headline?: string; summary?: string; source?: string; url?: string; created_at?: string }[];
+    }[];
+  };
+  news_sentiments?: Record<string, {
+    overall_sentiment?: number; confidence?: number; summary?: string;
+    analysis_status?: string; key_themes?: string[]; risk_events?: string[];
+    bullish_reasons?: string[]; bearish_reasons?: string[]; articles_analyzed?: number;
+  }>;
+}
 interface ChartIndicatorConfig extends IndicatorConfig { id: string; }
 interface IndicatorType {
   label: string; desc?: string; defaultParams: Record<string, number | boolean>;
@@ -995,6 +1010,13 @@ function fmtPct(v: number): string {
   return `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
 }
 
+function SentimentBadge({ score }: { score?: number }) {
+  if (score == null) return <span className="text-[9px] px-1 py-0.5 rounded bg-border text-gray-300 font-semibold">Unknown</span>;
+  if (score > 0.2)   return <span className="text-[9px] px-1 py-0.5 rounded bg-gain/20 text-gain font-semibold">Bullish {(score * 100).toFixed(0)}</span>;
+  if (score < -0.2)  return <span className="text-[9px] px-1 py-0.5 rounded bg-loss/20 text-loss font-semibold">Bearish {(score * 100).toFixed(0)}</span>;
+  return <span className="text-[9px] px-1 py-0.5 rounded bg-border text-gray-300 font-semibold">Neutral</span>;
+}
+
 // ── Backtest Monitor Tab ──────────────────────────────────────────────────────
 
 function BacktestTab() {
@@ -1042,6 +1064,14 @@ function BacktestTab() {
   const { data: allTrades = [] } = useQuery<Trade[]>({
     queryKey: ["trades"], queryFn: () => api.get("/trades").then(r => r.data),
     enabled: mode === "live",
+  });
+
+  // Agent news data (shared queryKey with Dashboard — deduped by React Query)
+  const { data: agentData } = useQuery<AgentNewsState>({
+    queryKey: ["agent-status"],
+    queryFn: () => api.get("/agent/status").then(r => r.data),
+    refetchInterval: 15_000,
+    staleTime: 10_000,
   });
 
   const activeStrategies = stratFilter === "all"
@@ -1113,6 +1143,63 @@ function BacktestTab() {
     const count = closed.length;
     return { pnl, wins, count, losses: count - wins, winRate: count > 0 ? wins / count * 100 : 0 };
   }, [liveTrades]);
+
+  const newsSnapshot  = agentData?.news?.snapshots?.find(s => s.symbol === symbol);
+  const newsSentiment = agentData?.news_sentiments?.[symbol];
+
+  // ── News Sentiment Backtest state ─────────────────────────────────────────
+  const [showNewsBacktest, setShowNewsBacktest] = useState(false);
+  const [sampleEvery, setSampleEvery] = useState(2);
+  const [expandedDay, setExpandedDay] = useState<string | null>(null);
+
+  // Derived from the backtest timeframe selector (used as quick-fill defaults)
+  const btDays = timeframe === "custom" ? customDays
+    : ({ "1m": 30, "3m": 90, "6m": 180, "1y": 365 } as Record<string, number>)[timeframe] ?? 90;
+  const btEndDate   = new Date().toISOString().slice(0, 10);
+  const btStartDate = new Date(Date.now() - btDays * 86_400_000).toISOString().slice(0, 10);
+
+  // Independently controlled date range for the news backtest
+  const [nbStartDate, setNbStartDate] = useState(() => new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10));
+  const [nbEndDate,   setNbEndDate]   = useState(() => new Date().toISOString().slice(0, 10));
+
+  const nbDays = Math.max(1, Math.round((new Date(nbEndDate).getTime() - new Date(nbStartDate).getTime()) / 86_400_000));
+
+  interface NbStatusData { status: string; symbol?: string; step?: number; total?: number; current_day?: string; error?: string; }
+  interface NbDayResult { date: string; news_window?: string; close: number; articles_count: number; sentiment_score: number; confidence: number; key_themes: string[]; bullish_reasons?: string[]; bearish_reasons?: string[]; risk_events?: string[]; summary?: string; articles?: { headline: string; source: string; url?: string; created_at?: string }[]; ret_1d: number | null; ret_3d?: number | null; ret_5d?: number | null; correct_1d: boolean | null; correct_3d?: boolean | null; correct_5d?: boolean | null; error?: string; }
+  interface NbStats { days_with_news: number; coverage_pct: number; bullish_days: number; bearish_days: number; directional_days: number; overall_accuracy_1d_pct: number; bullish_accuracy_1d_pct: number; bearish_accuracy_1d_pct: number; overall_accuracy_3d_pct: number; overall_accuracy_5d_pct: number; correlation_1d: number | null; correlation_3d: number | null; correlation_5d: number | null; }
+  interface NbResults { status: string; symbol?: string; total_days?: number; stats?: NbStats; daily?: NbDayResult[]; }
+
+  const { data: nbStatus } = useQuery<NbStatusData>({
+    queryKey: ["news-backtest-status"],
+    queryFn: () => api.get("/news-backtest/status").then(r => r.data),
+    refetchInterval: 5_000,
+    staleTime: 3_000,
+    enabled: showNewsBacktest,
+  });
+
+  const { data: nbResults } = useQuery<NbResults>({
+    queryKey: ["news-backtest-results"],
+    queryFn: () => api.get("/news-backtest/results").then(r => r.data),
+    refetchInterval: (nbStatus?.status === "running" || nbStatus?.status === "queued") ? 5_000 : 30_000,
+    staleTime: 3_000,
+    enabled: showNewsBacktest,
+  });
+
+  const nbRunMutation = useMutation({
+    mutationFn: () => api.post("/news-backtest/run", { symbol, start_date: nbStartDate, end_date: nbEndDate, sample_every: sampleEvery }).then(r => r.data),
+  });
+
+  const sentimentMarkers = useMemo(() => {
+    if (!nbResults?.daily) return [];
+    return nbResults.daily
+      .filter(d => Math.abs(d.sentiment_score) > 0.15)
+      .map(d => ({
+        time: d.date,
+        side: (d.sentiment_score > 0 ? "buy" : "sell") as "buy" | "sell",
+      }));
+  }, [nbResults]);
+
+  const nbVisiblePeriod = (nbDays <= 31 ? "1m" : nbDays <= 182 ? "3m" : "1y") as "1m" | "3m" | "1y";
 
   return (
     <div className="space-y-4">
@@ -1482,6 +1569,125 @@ function BacktestTab() {
         </>
       )}
 
+      {/* ── News Intelligence (agent pipeline output for selected symbol) ── */}
+      <div className="bg-panel border border-border rounded-lg overflow-hidden">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <p className="text-xs text-gray-500 uppercase tracking-widest">News Intelligence — {symbol}</p>
+            <p className="text-[10px] text-gray-600 mt-0.5">Output from last agent pipeline run · refresh from Dashboard → Agents tab</p>
+          </div>
+          {agentData?.last_run_at && (
+            <span className="text-[10px] text-gray-600 font-mono">
+              Last: {new Date(agentData.last_run_at).toLocaleTimeString()}
+            </span>
+          )}
+        </div>
+
+        {(!agentData || (!newsSnapshot && !newsSentiment)) ? (
+          <p className="px-4 py-8 text-sm text-gray-500 text-center">
+            No agent data for {symbol} — run the pipeline from Dashboard → Agents tab first.
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 divide-x divide-border">
+
+            {/* ── News Fetch ── */}
+            <div className="p-4 space-y-2">
+              <div className="flex items-center gap-2 mb-3">
+                <p className="text-[10px] uppercase tracking-widest text-brand/70 font-semibold">News Fetch</p>
+                {newsSnapshot ? (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-brand/10 border border-brand/20 text-brand font-medium">
+                    {newsSnapshot.articles} articles
+                  </span>
+                ) : (
+                  <span className="text-[9px] text-gray-600">Symbol not in last run</span>
+                )}
+              </div>
+              {!newsSnapshot ? (
+                <p className="text-xs text-gray-500">No fetch data — symbol may not have been in the last run.</p>
+              ) : (newsSnapshot.items ?? []).length === 0 ? (
+                <p className="text-xs text-gray-500">No articles found in last 24h.</p>
+              ) : (
+                (newsSnapshot.items ?? []).map((item, idx) => (
+                  <a key={`fetch-${idx}`} href={item.url || "#"} target="_blank" rel="noopener noreferrer"
+                    className="block border border-border/60 rounded px-2 py-1.5 hover:border-brand/40 hover:bg-surface/60 transition-colors text-xs">
+                    <p className="text-gray-200 line-clamp-2">{item.headline || "Untitled"}</p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">
+                      {item.source || "Unknown"}
+                      {item.created_at ? ` · ${new Date(item.created_at).toLocaleString()}` : ""}
+                    </p>
+                    {item.summary && <p className="text-[10px] text-gray-400 mt-0.5 line-clamp-1">{item.summary}</p>}
+                  </a>
+                ))
+              )}
+            </div>
+
+            {/* ── News Analysis ── */}
+            <div className="p-4 space-y-2.5">
+              <div className="flex items-center gap-2 mb-3">
+                <p className="text-[10px] uppercase tracking-widest text-purple-400/70 font-semibold">News Analysis (LLM)</p>
+                {newsSentiment && <SentimentBadge score={newsSentiment.overall_sentiment} />}
+              </div>
+              {!newsSentiment ? (
+                <p className="text-xs text-gray-500">No analysis data — symbol may not have been in the last run.</p>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3 text-xs">
+                    <span className="text-gray-400">Confidence <span className="text-white font-semibold">{Math.round((newsSentiment.confidence ?? 0) * 100)}%</span></span>
+                    <span className="text-gray-400">Articles <span className="text-white">{newsSentiment.articles_analyzed ?? 0}</span></span>
+                    {newsSentiment.analysis_status === "openai_failed" && (
+                      <span className="text-[9px] px-1 py-0.5 rounded bg-loss/20 text-loss font-semibold">OpenAI failed</span>
+                    )}
+                    {newsSentiment.analysis_status === "no_articles" && (
+                      <span className="text-[9px] px-1 py-0.5 rounded bg-border text-gray-400 font-semibold">No articles</span>
+                    )}
+                  </div>
+                  {newsSentiment.summary && (
+                    <p className="text-xs text-gray-300 leading-relaxed">{newsSentiment.summary}</p>
+                  )}
+                  {newsSentiment.key_themes?.length ? (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wide text-gray-500 mb-1.5">Key Themes</p>
+                      <div className="flex flex-wrap gap-1">
+                        {newsSentiment.key_themes.map((t, i) => (
+                          <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-purple-300">{t}</span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="grid grid-cols-2 gap-2 text-[10px]">
+                    {newsSentiment.bullish_reasons?.length ? (
+                      <div>
+                        <p className="text-[9px] uppercase tracking-wide text-gain/60 mb-1">Bullish</p>
+                        {newsSentiment.bullish_reasons.map((r, i) => (
+                          <p key={i} className="text-gain/80 leading-tight">+ {r}</p>
+                        ))}
+                      </div>
+                    ) : null}
+                    {newsSentiment.bearish_reasons?.length ? (
+                      <div>
+                        <p className="text-[9px] uppercase tracking-wide text-loss/60 mb-1">Bearish</p>
+                        {newsSentiment.bearish_reasons.map((r, i) => (
+                          <p key={i} className="text-loss/80 leading-tight">− {r}</p>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  {newsSentiment.risk_events?.length ? (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wide text-yellow-500/60 mb-1">Risk Events</p>
+                      {newsSentiment.risk_events.map((r, i) => (
+                        <p key={i} className="text-[10px] text-yellow-400/80 leading-tight">⚠ {r}</p>
+                      ))}
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
+
+          </div>
+        )}
+      </div>
+
       {/* ══ LIVE TRADES ══ */}
       {mode === "live" && (
         <>
@@ -1561,6 +1767,349 @@ function BacktestTab() {
           )}
         </>
       )}
+      {/* ── News Sentiment Backtest ── */}
+      <div className="bg-panel border border-border rounded-lg overflow-hidden">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <p className="text-xs text-gray-500 uppercase tracking-widest">News Sentiment Backtest — {symbol}</p>
+            <p className="text-[10px] text-gray-600 mt-0.5">
+              Fetches historical news per day · runs LLM sentiment analysis · compares direction vs actual next-day return
+            </p>
+          </div>
+          <button
+            onClick={() => setShowNewsBacktest(v => !v)}
+            className="text-xs bg-surface border border-border px-3 py-1.5 rounded-lg text-gray-400 hover:text-white transition-colors"
+          >
+            {showNewsBacktest ? "Hide ▴" : "Show ▾"}
+          </button>
+        </div>
+
+        {showNewsBacktest && (
+          <div className="p-4 space-y-4">
+            {/* Controls */}
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Date range */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">From</span>
+                <input
+                  type="date"
+                  value={nbStartDate}
+                  max={nbEndDate}
+                  onChange={e => setNbStartDate(e.target.value)}
+                  className="bg-surface border border-border rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-brand"
+                />
+                <span className="text-xs text-gray-500">To</span>
+                <input
+                  type="date"
+                  value={nbEndDate}
+                  min={nbStartDate}
+                  max={new Date().toISOString().slice(0, 10)}
+                  onChange={e => setNbEndDate(e.target.value)}
+                  className="bg-surface border border-border rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-brand"
+                />
+                <span className="text-[10px] text-gray-600">{nbDays}d</span>
+                <button
+                  onClick={() => { setNbStartDate(btStartDate); setNbEndDate(btEndDate); }}
+                  className="text-[10px] text-brand/70 hover:text-brand transition-colors underline-offset-2 hover:underline"
+                  title={`Set to current timeframe (${btStartDate} → ${btEndDate})`}
+                >
+                  ↻ use timeframe
+                </button>
+              </div>
+
+              {/* Quick presets */}
+              <div className="flex items-center gap-1">
+                {([["1m", 30], ["3m", 90], ["6m", 180], ["1y", 365]] as [string, number][]).map(([label, days]) => (
+                  <button
+                    key={label}
+                    onClick={() => {
+                      const end = new Date().toISOString().slice(0, 10);
+                      const start = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+                      setNbStartDate(start); setNbEndDate(end);
+                    }}
+                    className="text-[10px] px-2 py-0.5 rounded border border-border text-gray-500 hover:border-brand/50 hover:text-gray-300 transition-colors"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2 ml-auto">
+                <label className="text-xs text-gray-500">Sample every</label>
+                <select
+                  value={sampleEvery}
+                  onChange={e => setSampleEvery(Number(e.target.value))}
+                  className="bg-surface border border-border rounded px-2 py-1 text-xs text-white"
+                >
+                  {[1, 2, 3, 5, 7].map(n => (
+                    <option key={n} value={n}>{n === 1 ? "Every day" : `Every ${n} days`}</option>
+                  ))}
+                </select>
+                <span className="text-[10px] text-gray-600">≈ {Math.ceil(nbDays / sampleEvery)} LLM calls</span>
+                <button
+                  onClick={() => nbRunMutation.mutate()}
+                  disabled={nbStatus?.status === "running" || nbStatus?.status === "queued" || !nbStartDate || !nbEndDate}
+                  className="px-3 py-1.5 bg-brand text-white text-xs rounded-lg hover:bg-brand/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {nbStatus?.status === "running"
+                    ? `Running… ${nbStatus.step ?? 0}/${nbStatus.total ?? "?"}`
+                    : nbStatus?.status === "queued" ? "Queued…"
+                    : "Run Analysis"}
+                </button>
+              </div>
+            </div>
+
+            {/* Progress */}
+            {nbStatus?.status === "running" && nbStatus.current_day && (
+              <div className="flex items-center gap-2 text-xs text-brand">
+                <span className="w-2 h-2 rounded-full bg-brand animate-pulse flex-shrink-0" />
+                Processing {nbStatus.current_day}… ({nbStatus.step ?? 0}/{nbStatus.total ?? "?"} days)
+              </div>
+            )}
+            {nbStatus?.status === "error" && (
+              <p className="text-xs text-loss bg-loss/10 px-3 py-2 rounded">{nbStatus.error}</p>
+            )}
+
+            {/* Results */}
+            {nbResults?.status === "ok" && nbResults.stats && nbResults.symbol === symbol ? (
+              <>
+                {/* Sentiment chart */}
+                <div className="bg-surface border border-border rounded-lg overflow-hidden">
+                  <div className="px-3 py-2 border-b border-border/60 flex items-center gap-4">
+                    <p className="text-[11px] text-gray-500 uppercase tracking-wide">Price + Sentiment Signals — {symbol}</p>
+                    <span className="flex items-center gap-1 text-[10px] text-gain"><span className="inline-block w-0 h-0 border-l-[4px] border-r-[4px] border-b-[7px] border-l-transparent border-r-transparent border-b-gain" /> Bullish signal</span>
+                    <span className="flex items-center gap-1 text-[10px] text-loss"><span className="inline-block w-0 h-0 border-l-[4px] border-r-[4px] border-t-[7px] border-l-transparent border-r-transparent border-t-loss" /> Bearish signal</span>
+                    <span className="ml-auto text-[10px] text-gray-600">{sentimentMarkers.length} signals ({nbResults.stats.bullish_days}↑ {nbResults.stats.bearish_days}↓)</span>
+                  </div>
+                  <div style={{ height: 280 }}>
+                    <PriceChart
+                      bars={bars}
+                      symbol={symbol}
+                      chartType="candlestick"
+                      intraday={false}
+                      visiblePeriod={nbVisiblePeriod}
+                      tradeMarkers={sentimentMarkers}
+                    />
+                  </div>
+                </div>
+
+                {/* Accuracy grid — 1d / 3d / 5d */}
+                <div className="bg-surface border border-border rounded-lg overflow-hidden">
+                  <div className="px-4 py-2 border-b border-border/60">
+                    <p className="text-[10px] text-gray-500 uppercase tracking-wide">Directional Accuracy · {nbResults.stats.directional_days} signals · neutral threshold ±0.15</p>
+                  </div>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-gray-500 border-b border-border bg-[#0d1117]">
+                        <th className="text-left px-4 py-2 font-medium">Horizon</th>
+                        <th className="text-center px-4 py-2 font-medium">Overall</th>
+                        <th className="text-center px-4 py-2 font-medium">Bullish ({nbResults.stats.bullish_days}↑)</th>
+                        <th className="text-center px-4 py-2 font-medium">Bearish ({nbResults.stats.bearish_days}↓)</th>
+                        <th className="text-center px-4 py-2 font-medium">Correlation</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {([
+                        ["Next day (1d)", "overall_accuracy_1d_pct", "bullish_accuracy_1d_pct", "bearish_accuracy_1d_pct", "correlation_1d"],
+                        ["3 days (3d)",   "overall_accuracy_3d_pct", "bullish_accuracy_3d_pct", "bearish_accuracy_3d_pct", "correlation_3d"],
+                        ["5 days (5d)",   "overall_accuracy_5d_pct", "bullish_accuracy_5d_pct", "bearish_accuracy_5d_pct", "correlation_5d"],
+                      ] as [string, keyof typeof nbResults.stats, keyof typeof nbResults.stats, keyof typeof nbResults.stats, keyof typeof nbResults.stats][]).map(([label, oa, ba, bra, corr]) => {
+                        const oaV  = nbResults.stats![oa]  as number;
+                        const baV  = nbResults.stats![ba]  as number;
+                        const braV = nbResults.stats![bra] as number;
+                        const cV   = nbResults.stats![corr] as number | null;
+                        const acc  = (v: number) => v >= 50 ? "text-gain" : "text-loss";
+                        return (
+                          <tr key={label} className="border-b border-border/40 hover:bg-surface/50">
+                            <td className="px-4 py-2.5 text-gray-400 font-medium">{label}</td>
+                            <td className={clsx("px-4 py-2.5 text-center font-bold text-sm", acc(oaV))}>{oaV}%</td>
+                            <td className={clsx("px-4 py-2.5 text-center font-semibold", acc(baV))}>{baV}%</td>
+                            <td className={clsx("px-4 py-2.5 text-center font-semibold", acc(braV))}>{braV}%</td>
+                            <td className="px-4 py-2.5 text-center font-mono text-gray-400">{cV != null ? cV.toFixed(3) : "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Coverage */}
+                <div className="flex items-center gap-3 text-xs text-gray-500">
+                  <span>News coverage:</span>
+                  <div className="flex-1 bg-border rounded-full h-1.5 max-w-xs">
+                    <div className="bg-brand h-1.5 rounded-full" style={{ width: `${nbResults.stats.coverage_pct}%` }} />
+                  </div>
+                  <span>{nbResults.stats.coverage_pct}% of days had news ({nbResults.stats.days_with_news}/{nbResults.total_days ?? "?"} sampled)</span>
+                </div>
+
+                {/* Per-day expandable table */}
+                <div className="bg-surface border border-border rounded-lg overflow-hidden">
+                  <div className="max-h-[600px] overflow-y-auto">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-[#0d1117] z-10">
+                        <tr className="text-gray-500 border-b border-border">
+                          <th className="text-left px-3 py-2 font-medium w-4" />
+                          {["Decision Date", "News Window", "Articles", "Sentiment", "Conf.", "1d Return", "3d Return", "5d Return", "1d ✓", "3d ✓", "5d ✓"].map(h => (
+                            <th key={h} className="text-left px-3 py-2 font-medium">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(nbResults.daily ?? []).map((d, i) => {
+                          const isOpen = expandedDay === d.date;
+                          const hasDetail = d.articles_count > 0;
+                          return (
+                            <>
+                              <tr
+                                key={`row-${i}`}
+                                onClick={() => hasDetail && setExpandedDay(isOpen ? null : d.date)}
+                                className={clsx(
+                                  "border-b border-border/40 transition-colors",
+                                  hasDetail ? "cursor-pointer hover:bg-white/[0.03]" : "",
+                                  isOpen ? "bg-white/[0.04]" : ""
+                                )}
+                              >
+                                <td className="px-3 py-1.5 text-gray-600 text-center">
+                                  {hasDetail ? (isOpen ? "▾" : "▸") : ""}
+                                </td>
+                                <td className="px-3 py-1.5 text-gray-400 font-mono">{d.date}</td>
+                                <td className="px-3 py-1.5 text-gray-600 font-mono text-[9px]">{d.news_window ?? "—"}</td>
+                                <td className="px-3 py-1.5 text-gray-300">{d.articles_count}</td>
+                                <td className="px-3 py-1.5"><SentimentBadge score={d.sentiment_score} /></td>
+                                <td className="px-3 py-1.5 text-gray-500">
+                                  {d.articles_count > 0 ? `${(d.confidence * 100).toFixed(0)}%` : "—"}
+                                </td>
+                                {([
+                                  [d.ret_1d, d.correct_1d],
+                                  [d.ret_3d ?? null, d.correct_3d ?? null],
+                                  [d.ret_5d ?? null, d.correct_5d ?? null],
+                                ] as [number | null, boolean | null][]).flatMap(([ret, correct], ri) => [
+                                  <td key={`ret${ri}`} className={clsx("px-3 py-1.5 font-mono font-semibold",
+                                    ret != null ? (ret >= 0 ? "text-gain" : "text-loss") : "text-gray-600")}>
+                                    {ret != null ? `${ret >= 0 ? "+" : ""}${ret.toFixed(2)}%` : "—"}
+                                  </td>,
+                                  <td key={`c${ri}`} className="px-3 py-1.5">
+                                    {correct === null
+                                      ? <span className="text-gray-600 text-[10px]">{ri === 0 ? "neutral" : "—"}</span>
+                                      : correct
+                                      ? <span className="text-gain font-bold">✓</span>
+                                      : <span className="text-loss font-bold">✗</span>}
+                                  </td>,
+                                ])}
+                              </tr>
+
+                              {isOpen && (
+                                <tr key={`detail-${i}`} className="border-b border-border/60 bg-[#0d1117]">
+                                  <td colSpan={12} className="px-4 py-3">
+                                    <div className="space-y-3">
+
+                                      {/* News window label */}
+                                      {d.news_window && (
+                                        <p className="text-[9px] text-gray-600 font-mono">
+                                          News fetched: {d.news_window} · {d.articles_count} article{d.articles_count !== 1 ? "s" : ""}
+                                        </p>
+                                      )}
+
+                                      {/* LLM summary */}
+                                      {d.summary && (
+                                        <p className="text-[11px] text-gray-300 leading-relaxed border-l-2 border-brand/50 pl-3">
+                                          {d.summary}
+                                        </p>
+                                      )}
+
+                                      {/* Key themes */}
+                                      {d.key_themes && d.key_themes.length > 0 && (
+                                        <div className="flex flex-wrap gap-1">
+                                          {d.key_themes.map((t, ti) => (
+                                            <span key={ti} className="text-[9px] px-1.5 py-0.5 rounded bg-brand/10 text-brand/80 border border-brand/20 font-medium">{t}</span>
+                                          ))}
+                                        </div>
+                                      )}
+
+                                      {/* Bullish / Bearish reasons */}
+                                      {((d.bullish_reasons?.length ?? 0) > 0 || (d.bearish_reasons?.length ?? 0) > 0) && (
+                                        <div className="grid grid-cols-2 gap-3">
+                                          {(d.bullish_reasons?.length ?? 0) > 0 && (
+                                            <div>
+                                              <p className="text-[9px] uppercase tracking-wide text-gain/60 mb-1 font-semibold">Bullish Reasons</p>
+                                              {d.bullish_reasons!.map((r, ri) => (
+                                                <p key={ri} className="text-[10px] text-gain/80 leading-snug">+ {r}</p>
+                                              ))}
+                                            </div>
+                                          )}
+                                          {(d.bearish_reasons?.length ?? 0) > 0 && (
+                                            <div>
+                                              <p className="text-[9px] uppercase tracking-wide text-loss/60 mb-1 font-semibold">Bearish Reasons</p>
+                                              {d.bearish_reasons!.map((r, ri) => (
+                                                <p key={ri} className="text-[10px] text-loss/80 leading-snug">− {r}</p>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+
+                                      {/* Risk events */}
+                                      {(d.risk_events?.length ?? 0) > 0 && (
+                                        <div>
+                                          <p className="text-[9px] uppercase tracking-wide text-yellow-500/60 mb-1 font-semibold">Risk Events</p>
+                                          {d.risk_events!.map((r, ri) => (
+                                            <p key={ri} className="text-[10px] text-yellow-400/80 leading-snug">⚠ {r}</p>
+                                          ))}
+                                        </div>
+                                      )}
+
+                                      {/* News articles */}
+                                      {(d.articles?.length ?? 0) > 0 && (
+                                        <div>
+                                          <p className="text-[9px] uppercase tracking-wide text-gray-500 mb-1.5 font-semibold">Source Articles</p>
+                                          <div className="space-y-1.5">
+                                            {d.articles!.map((a, ai) => (
+                                              <div key={ai} className="flex items-start gap-2 text-[10px]">
+                                                <span className="flex-shrink-0 px-1.5 py-0.5 rounded bg-border text-gray-400 font-mono">{a.source || "?"}</span>
+                                                {a.url ? (
+                                                  <a href={a.url} target="_blank" rel="noopener noreferrer"
+                                                    className="text-gray-300 hover:text-white leading-snug hover:underline" onClick={e => e.stopPropagation()}>
+                                                    {a.headline}
+                                                  </a>
+                                                ) : (
+                                                  <span className="text-gray-300 leading-snug">{a.headline}</span>
+                                                )}
+                                                {a.created_at && (
+                                                  <span className="flex-shrink-0 text-gray-600 ml-auto">{String(a.created_at).slice(11, 16)}</span>
+                                                )}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            ) : (
+              nbStatus?.status !== "running" && nbStatus?.status !== "queued" && (
+                <p className="text-xs text-gray-500 text-center py-6">
+                  Click <span className="text-white font-semibold">Run Analysis</span> to evaluate how accurately the LLM news sentiment predicts next-day price direction for {symbol}.
+                  <br />
+                  <span className="text-gray-600 mt-1 block">
+                    Uses "{nbStartDate} → {nbEndDate}" · {nbDays}d · ≈{Math.ceil(nbDays / sampleEvery)} LLM calls · neutral threshold ±0.15
+                  </span>
+                </p>
+              )
+            )}
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }

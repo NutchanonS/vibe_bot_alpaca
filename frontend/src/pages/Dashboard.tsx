@@ -524,6 +524,7 @@ function AgentPipelinePanel({ activeSymbol }: { activeSymbol: string }) {
 
 function NewsAgentPanel() {
   const { data, isLoading, isError } = useAgentStatus();
+  const [viewMode, setViewMode]         = useState<"analysis" | "fetch">("analysis");
   const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null);
   const [sentimentFilter, setSentimentFilter] = useState("");
   const [showOnlyFailed, setShowOnlyFailed] = useState(false);
@@ -533,7 +534,8 @@ function NewsAgentPanel() {
   if (!data)     return <p className="text-xs text-gray-500 p-3">No data yet — run the pipeline first.</p>;
 
   const sentiments   = data.news_sentiments ?? {};
-  const newsBySymbol = Object.fromEntries((data.news?.snapshots ?? []).map(s => [s.symbol, s]));
+  const snapshots    = data.news?.snapshots ?? [];
+  const newsBySymbol = Object.fromEntries(snapshots.map(s => [s.symbol, s]));
   const normalized   = sentimentFilter.trim().toLowerCase();
   const entries = Object.entries(sentiments).filter(([sym, s]) => {
     if (showOnlyFailed && s.analysis_status !== "openai_failed") return false;
@@ -543,22 +545,87 @@ function NewsAgentPanel() {
 
   return (
     <div className="p-3 space-y-2 text-xs">
+      {/* View toggle */}
       <div className="flex items-center gap-2">
-        <input
-          value={sentimentFilter}
-          onChange={e => setSentimentFilter(e.target.value)}
-          placeholder="Filter by symbol or text"
-          className="flex-1 bg-surface border border-border rounded px-2 py-1 text-[11px] text-gray-200 focus:outline-none focus:border-brand"
-        />
-        <button
-          type="button"
-          onClick={() => setShowOnlyFailed(v => !v)}
-          className={clsx("text-[10px] px-2 py-1 rounded border transition-colors",
-            showOnlyFailed ? "border-loss text-loss bg-loss/10" : "border-border text-gray-300 hover:text-white")}
-        >
-          Only OpenAI failed
-        </button>
+        <div className="flex bg-surface border border-border rounded overflow-hidden text-[10px]">
+          <button
+            type="button"
+            onClick={() => setViewMode("fetch")}
+            className={clsx("px-2.5 py-1 font-medium transition-colors",
+              viewMode === "fetch" ? "bg-brand text-white" : "text-gray-400 hover:text-white")}
+          >
+            Fetch ({snapshots.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("analysis")}
+            className={clsx("px-2.5 py-1 font-medium transition-colors",
+              viewMode === "analysis" ? "bg-brand text-white" : "text-gray-400 hover:text-white")}
+          >
+            Analysis ({Object.keys(sentiments).length})
+          </button>
+        </div>
+        {viewMode === "analysis" && (
+          <>
+            <input
+              value={sentimentFilter}
+              onChange={e => setSentimentFilter(e.target.value)}
+              placeholder="Filter by symbol or text"
+              className="flex-1 bg-surface border border-border rounded px-2 py-1 text-[11px] text-gray-200 focus:outline-none focus:border-brand"
+            />
+            <button
+              type="button"
+              onClick={() => setShowOnlyFailed(v => !v)}
+              className={clsx("text-[10px] px-2 py-1 rounded border transition-colors flex-shrink-0",
+                showOnlyFailed ? "border-loss text-loss bg-loss/10" : "border-border text-gray-300 hover:text-white")}
+            >
+              OpenAI failed
+            </button>
+          </>
+        )}
       </div>
+
+      {/* ── Fetch view ── */}
+      {viewMode === "fetch" && (
+        <>
+          {snapshots.length === 0 && <p className="text-gray-500">No news fetched yet — run the pipeline first.</p>}
+          {snapshots.map(snap => (
+            <div key={`fetch-${snap.symbol}`} className="border border-border/70 rounded-md bg-surface/40 overflow-hidden">
+              <div className="px-3 py-2 flex items-center gap-2 border-b border-border/40">
+                <span className="font-mono text-brand">{snap.symbol}</span>
+                <span className={clsx(
+                  "text-[9px] px-1.5 py-0.5 rounded border font-medium",
+                  snap.articles > 0
+                    ? "bg-brand/10 border-brand/20 text-brand"
+                    : "bg-border border-border text-gray-500"
+                )}>
+                  {snap.articles} articles
+                </span>
+                {snap.articles === 0 && <span className="text-[9px] text-gray-600">No news found</span>}
+              </div>
+              {(snap.items ?? []).length > 0 && (
+                <div className="px-3 py-2 space-y-1.5">
+                  {(snap.items ?? []).map((item, idx) => (
+                    <a key={`${snap.symbol}-fetch-${item.id ?? idx}`} href={item.url || "#"} target="_blank" rel="noopener noreferrer"
+                      className="block border border-border/50 rounded px-2 py-1.5 hover:border-brand/60 hover:bg-surface/60 transition-colors">
+                      <p className="text-[11px] text-gray-200 line-clamp-2">{item.headline || "Untitled"}</p>
+                      <p className="text-[10px] text-gray-500 mt-0.5">
+                        {item.source || "Unknown"}
+                        {item.created_at ? ` · ${new Date(item.created_at).toLocaleString()}` : ""}
+                      </p>
+                      {item.summary && <p className="text-[10px] text-gray-400 mt-0.5 line-clamp-1">{item.summary}</p>}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* ── Analysis view ── */}
+      {viewMode === "analysis" && (
+        <>
       {Object.keys(sentiments).length === 0 && <p className="text-gray-500">No sentiment output yet — run the pipeline first.</p>}
       {Object.keys(sentiments).length > 0 && entries.length === 0 && <p className="text-gray-500">No entries match filter.</p>}
       {entries.map(([sym, s]) => {
@@ -630,6 +697,8 @@ function NewsAgentPanel() {
           </div>
         );
       })}
+        </>
+      )}
     </div>
   );
 }

@@ -10,6 +10,7 @@ import pandas as pd
 from alpaca.data import StockHistoricalDataClient
 from alpaca.data.live import StockDataStream
 from alpaca.data.requests import StockBarsRequest
+from alpaca.data.enums import DataFeed
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
@@ -51,17 +52,31 @@ class AlpacaClient:
 
     # --- Market Data ---
 
-    def get_bars(self, symbol: str, timeframe: str, limit: int = 100) -> pd.DataFrame:
+    def get_bars(
+        self,
+        symbol: str,
+        timeframe: str,
+        limit: int = 100,
+        start: "datetime | str | None" = None,
+        end: "datetime | str | None" = None,
+    ) -> pd.DataFrame:
         """Return OHLCV DataFrame for the given symbol and timeframe string."""
         tf = _TIMEFRAME_MAP.get(timeframe)
         if tf is None:
             raise ValueError(f"Unknown timeframe '{timeframe}'. Valid: {list(_TIMEFRAME_MAP)}")
 
+        if isinstance(start, str):
+            start = datetime.fromisoformat(start.rstrip("Z")).replace(tzinfo=timezone.utc)
+        if isinstance(end, str):
+            end = datetime.fromisoformat(end.rstrip("Z")).replace(tzinfo=timezone.utc)
+
         req = StockBarsRequest(
             symbol_or_symbols=symbol,
             timeframe=tf,
             limit=limit,
-            start=datetime.now(timezone.utc) - timedelta(days=7),
+            start=start or datetime.now(timezone.utc) - timedelta(days=7),
+            end=end,
+            feed=DataFeed.IEX,
         )
         bars = self._data.get_stock_bars(req)
         df = bars.df

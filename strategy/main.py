@@ -241,6 +241,66 @@ def poll_scanner_run_requests() -> None:
         }), ex=3600)
 
 
+def poll_news_backtest_requests() -> None:
+    try:
+        raw = _redis.get("news_backtest:run_request")
+        if not raw:
+            return
+
+        _redis.delete("news_backtest:run_request")
+        req = json.loads(raw)
+
+        symbol      = str(req.get("symbol", "SPY")).upper()
+        start_date  = str(req.get("start_date", ""))
+        end_date    = str(req.get("end_date", ""))
+        sample_every = max(1, int(req.get("sample_every", 2)))
+
+        if not start_date or not end_date:
+            _redis.set("news_backtest:status", json.dumps({"status": "error", "error": "Missing start_date or end_date."}), ex=3600)
+            return
+
+        try:
+            from news_backtest.runner import NewsBacktestRunner
+            runner = NewsBacktestRunner()
+        except Exception as exc:
+            _redis.set("news_backtest:status", json.dumps({"status": "error", "error": f"Runner unavailable: {exc}"}), ex=3600)
+            return
+
+        _redis.set("news_backtest:status", json.dumps({
+            "status":      "running",
+            "symbol":      symbol,
+            "start_date":  start_date,
+            "end_date":    end_date,
+            "sample_every": sample_every,
+            "started_at":  datetime.now(timezone.utc).isoformat(),
+        }), ex=3600)
+
+        def _progress(step: int, total: int, day: str) -> None:
+            _redis.set("news_backtest:status", json.dumps({
+                "status":      "running",
+                "symbol":      symbol,
+                "step":        step,
+                "total":       total,
+                "current_day": day,
+                "started_at":  datetime.now(timezone.utc).isoformat(),
+            }), ex=3600)
+
+        results = runner.run(symbol, start_date, end_date, sample_every=sample_every, progress_cb=_progress)
+        _redis.set("news_backtest:results", json.dumps(results), ex=3600)
+        _redis.set("news_backtest:status", json.dumps({
+            "status":       results.get("status", "ok"),
+            "symbol":       symbol,
+            "completed_at": results.get("completed_at"),
+            "total_days":   results.get("total_days", 0),
+            "error":        results.get("error"),
+        }), ex=3600)
+        log.info("News backtest done for %s — %d days", symbol, results.get("total_days", 0))
+
+    except Exception as exc:
+        log.error("News backtest poll failed: %s", exc)
+        _redis.set("news_backtest:status", json.dumps({"status": "error", "error": str(exc)}), ex=3600)
+
+
 def poll_agent_run_requests() -> None:
     try:
         raw = _redis.get("agent:run_request")
@@ -273,6 +333,9 @@ def main() -> None:
 
     # Scanner trigger poll from backend /api/scanner/run
     scheduler.add_job(poll_scanner_run_requests, IntervalTrigger(seconds=15), id="scanner_run_poll")
+
+    # News sentiment backtest trigger poll
+    scheduler.add_job(poll_news_backtest_requests, IntervalTrigger(seconds=15), id="news_backtest_poll")
 
     # VWAP strategy every 5 minutes (intraday only)
     scheduler.add_job(run_vwap_strategy, IntervalTrigger(minutes=5), id="vwap")

@@ -78,19 +78,24 @@ class NewsFetcherAgent(BaseAgent):
         symbols: list[str],
         lookback_hours: int | None = None,
         limit_per_symbol: int | None = None,
+        start_iso: str | None = None,
+        end_iso: str | None = None,
     ) -> list[NewsSnapshot]:
-        """Fetch news for all symbols in a single API call, then group by symbol."""
+        """Fetch news for all symbols in a single API call, then group by symbol.
+
+        Pass start_iso + end_iso directly to query a specific time window instead
+        of using lookback_hours (used by NewsBacktestRunner for historical fetches).
+        """
         if not symbols:
             return []
 
-        lookback = int(lookback_hours if lookback_hours is not None else self.lookback_hours)
         per_symbol_limit = int(limit_per_symbol if limit_per_symbol is not None else self.limit_per_symbol)
 
-        start_iso = (
-            datetime.now(timezone.utc) - timedelta(hours=lookback)
-        ).isoformat()
+        if start_iso is None:
+            lookback = int(lookback_hours if lookback_hours is not None else self.lookback_hours)
+            start_iso = (datetime.now(timezone.utc) - timedelta(hours=lookback)).isoformat()
 
-        raw_articles = self._call_api(symbols, start_iso, per_symbol_limit)
+        raw_articles = self._call_api(symbols, start_iso, per_symbol_limit, end_iso=end_iso)
 
         # Group by symbol — one article can appear under multiple symbols
         by_symbol: dict[str, list[NewsArticle]] = {sym: [] for sym in symbols}
@@ -110,7 +115,13 @@ class NewsFetcherAgent(BaseAgent):
 
     # ── Private ───────────────────────────────────────────────────────────────
 
-    def _call_api(self, symbols: list[str], start_iso: str, per_symbol_limit: int) -> list[dict]:
+    def _call_api(
+        self,
+        symbols: list[str],
+        start_iso: str,
+        per_symbol_limit: int,
+        end_iso: str | None = None,
+    ) -> list[dict]:
         """Call Alpaca News API; returns raw article dicts. Never raises."""
         params: dict = {
             "symbols":         ",".join(symbols),
@@ -119,6 +130,8 @@ class NewsFetcherAgent(BaseAgent):
             "sort":            "desc",
             "include_content": "false",
         }
+        if end_iso:
+            params["end"] = end_iso
         try:
             resp = requests.get(
                 _NEWS_URL,
