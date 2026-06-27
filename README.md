@@ -2,17 +2,21 @@
 
 ## Home Page
 
-![Landing page — hero & feature overview](./readme_img/landing.png)
 
-![Landing page — AI agent pipeline & scanners](./readme_img/landing-2.png)
 
 ## Dashboard
 
 ![Dashboard — main trading view](./readme_img/image.png)
 
-![Dashboard — agents & scanner tabs](./readme_img/image-5.png)
+![alt text](./readme_img/1.png)
+
+![alt text](./readme_img/2.png)
 
 ![Scanner — waterfall + momentum](./readme_img/image-4.png)
+
+![alt text](./readme_img/3.png)
+
+![alt text](./readme_img/4.png)
 
 Automated trading bot platform with:
 - Python strategy engine (`strategy/`)
@@ -29,7 +33,7 @@ Automated trading bot platform with:
 - **Scanners:** Waterfall (6-stage, S&P 100 + ETFs) + Momentum (5-stage, live movers)
 - **Infra:** Docker Compose, Nginx reverse proxy
 
-![System architecture](./readme_img/image-2.png)
+![alt text](./readme_img/5.png)
 
 ## Repository Structure
 
@@ -140,6 +144,8 @@ Run via Scanner page → "Run Scan" or `POST /api/scanner/run` / `POST /api/mome
 
 ![alt text](./readme_img/image-3.png)
 
+![alt text](./readme_img/image-1.png)
+
 ## Security Notes
 
 - Do not commit real API keys or secrets.
@@ -156,3 +162,18 @@ Run via Scanner page → "Run Scan" or `POST /api/scanner/run` / `POST /api/mome
 ## License
 
 Internal/project-specific unless otherwise specified.
+
+
+![alt text](./readme_img/7.png)
+
+![alt text](./readme_img/13.png)
+
+![alt text](./readme_img/8.png)
+
+![alt text](./readme_img/9.png)
+
+![alt text](./readme_img/10.png)
+
+![alt text](./readme_img/11.png)
+
+![alt text](./readme_img/12.png)

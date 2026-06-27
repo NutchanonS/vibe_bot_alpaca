@@ -34,6 +34,20 @@ _VOLATILE_UNIVERSE: list[str] = [
 ]
 _VOLATILE_UNIVERSE = list(dict.fromkeys(_VOLATILE_UNIVERSE))
 
+# Sub-universe filters applied on top of live movers
+_TECH_SYMBOLS: set[str] = {
+    "NVDA", "AMD", "TSLA", "META", "NFLX", "SHOP", "SNAP", "PINS",
+    "RBLX", "COIN", "MSTR", "SMCI", "PLTR", "PATH", "AI", "SOUN",
+    "IONQ", "RXRX", "WOLF", "NKLA", "RIVN", "LCID", "TQQQ", "SQQQ",
+    "FNGU", "FNGD",
+}
+
+_BIO_SYMBOLS: set[str] = {
+    "MRNA", "BNTX", "SGEN", "RCKT", "ARCT", "BEAM", "EDIT", "NTLA",
+    "CRSP", "ACMR", "IOVA", "INMD", "ACAD", "FOLD", "RARE", "PTGX",
+    "LABD", "LABU",
+}
+
 
 def get_momentum_universe(top_n: int = 50, include_fallback: bool = True) -> list[str]:
     """Return a deduplicated list of high-momentum candidates.
@@ -46,6 +60,20 @@ def get_momentum_universe(top_n: int = 50, include_fallback: bool = True) -> lis
         merged = list(dict.fromkeys(movers + _VOLATILE_UNIVERSE))
         return merged[:max(top_n, len(movers))]
     return movers
+
+
+def get_momentum_universe_filtered(
+    top_n: int = 50,
+    universe: str | None = None,
+    include_fallback: bool = True,
+) -> list[str]:
+    """Like get_momentum_universe but optionally filters to a sub-universe."""
+    symbols = get_momentum_universe(top_n=top_n, include_fallback=include_fallback)
+    if universe == "tech":
+        return [s for s in symbols if s in _TECH_SYMBOLS] or symbols
+    if universe == "bio":
+        return [s for s in symbols if s in _BIO_SYMBOLS] or symbols
+    return symbols
 
 
 def _fetch_alpaca_movers(top_n: int) -> list[str]:

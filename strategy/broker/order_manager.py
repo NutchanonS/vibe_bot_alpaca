@@ -46,6 +46,26 @@ class OrderManager:
             log.error("Failed to place limit order: %s", exc)
             return None
 
+    def place_bracket_order(
+        self,
+        symbol: str,
+        qty: float,
+        side: str,
+        stop_loss: float,
+        take_profit: float,
+        strategy: str = "",
+    ) -> Optional[Order]:
+        try:
+            order = alpaca.place_bracket_order(
+                symbol=symbol, qty=qty, side=side,
+                stop_loss=stop_loss, take_profit=take_profit,
+            )
+            self._persist_order(order, strategy)
+            return order
+        except Exception as exc:
+            log.error("Failed to place bracket order %s %s %s: %s", side, symbol, qty, exc)
+            return None
+
     def cancel_order(self, order_id: str) -> bool:
         try:
             alpaca.cancel_order(order_id)

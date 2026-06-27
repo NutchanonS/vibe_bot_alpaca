@@ -14,7 +14,11 @@ from alpaca.data.enums import DataFeed
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
-from alpaca.trading.requests import MarketOrderRequest, LimitOrderRequest, StopOrderRequest
+from alpaca.trading.requests import (
+    MarketOrderRequest, LimitOrderRequest, StopOrderRequest,
+    TakeProfitRequest, StopLossRequest,
+)
+from alpaca.trading.enums import OrderClass
 from alpaca.trading.models import TradeAccount, Position, Order
 
 from config import settings
@@ -140,6 +144,30 @@ class AlpacaClient:
 
         order = self._trading.submit_order(req)
         log.info("Order placed: %s %s %s qty=%s", order_type, side, symbol, qty)
+        return order
+
+    def place_bracket_order(
+        self,
+        symbol: str,
+        qty: float,
+        side: str,
+        stop_loss: float,
+        take_profit: float,
+    ) -> Order:
+        """Submit a bracket order (entry + stop-loss + take-profit in one request)."""
+        order_side = OrderSide.BUY if side.lower() == "buy" else OrderSide.SELL
+        req = MarketOrderRequest(
+            symbol=symbol,
+            qty=qty,
+            side=order_side,
+            time_in_force=TimeInForce.DAY,
+            order_class=OrderClass.BRACKET,
+            take_profit=TakeProfitRequest(limit_price=round(float(take_profit), 2)),
+            stop_loss=StopLossRequest(stop_price=round(float(stop_loss), 2)),
+        )
+        order = self._trading.submit_order(req)
+        log.info("Bracket order placed: %s %s qty=%s SL=%.2f TP=%.2f",
+                 side, symbol, qty, stop_loss, take_profit)
         return order
 
     def cancel_order(self, order_id: str) -> None:

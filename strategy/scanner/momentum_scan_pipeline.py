@@ -19,7 +19,7 @@ from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from scanner.momentum_universe import get_momentum_universe
+from scanner.momentum_universe import get_momentum_universe_filtered
 from scanner.momentum_screener import MomentumScreener
 from scanner.momentum_quality_screen import MomentumQualityScreener
 from agents.news_fetcher_agent import NewsFetcherAgent
@@ -48,14 +48,14 @@ class MomentumScanPipeline:
 
     def run(
         self,
-        universe: list[str] | None = None,
+        universe: list[str] | str | None = None,
         stage1_top_n: int = 20,
         stage2_top_n: int = 10,
     ) -> dict:
         started_at = datetime.now(timezone.utc).isoformat()
 
-        if universe is None:
-            universe = get_momentum_universe()
+        if universe is None or isinstance(universe, str):
+            universe = get_momentum_universe_filtered(universe=universe if isinstance(universe, str) else None)
 
         log.info(
             "Momentum scan started — universe=%d, s1_top_n=%d, s2_top_n=%d",

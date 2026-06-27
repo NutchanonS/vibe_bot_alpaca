@@ -56,6 +56,17 @@ app.use("/api/scanner",       authMiddleware, require("./routes/scanner"));
 app.use("/api/momentum",      authMiddleware, require("./routes/momentum_scanner"));
 app.use("/api/news-backtest", authMiddleware, require("./routes/news_backtest"));
 
+// Scanner / Momentum historical validation
+const { waterfallValidateRouter, momentumValidateRouter } = require("./routes/scanner_validate");
+app.use("/api/scanner",  authMiddleware, waterfallValidateRouter);
+app.use("/api/momentum", authMiddleware, momentumValidateRouter);
+
+// Auto-trade settings + pending approvals
+const { autoTradeRouter, waterfallPendingRouter, momentumPendingRouter } = require("./routes/auto_trade");
+app.use("/api/auto-trade",  authMiddleware, autoTradeRouter);
+app.use("/api/scanner",     authMiddleware, waterfallPendingRouter);
+app.use("/api/momentum",    authMiddleware, momentumPendingRouter);
+
 // Start WebSocket relay
 startRelay(io);
 
